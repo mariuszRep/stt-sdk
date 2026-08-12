@@ -1,0 +1,66 @@
+[
+  {
+    "type": "Metadata",
+    "transaction_key": "deprecated",
+    "request_id": "req_stream_1",
+    "sha256": "abc123",
+    "created": "2026-08-12T00:00:00Z",
+    "duration": 0,
+    "channels": 1,
+    "models": ["nova-2"],
+    "model_info": {
+      "name": "nova-2",
+      "version": "2024-06-21.29434"
+    }
+  },
+  {
+    "type": "Results",
+    "channel_index": [0],
+    "is_final": false,
+    "start": 0.0,
+    "duration": 1.1,
+    "channel": {
+      "alternatives": [
+        {
+          "transcript": "hello wor",
+          "confidence": 0.9
+        }
+      ]
+    }
+  },
+  {
+    "type": "Results",
+    "channel_index": [0],
+    "is_final": true,
+    "start": 0.0,
+    "duration": 1.5,
+    "channel": {
+      "alternatives": [
+        {
+          "transcript": "hello world",
+          "confidence": 0.95,
+          "words": [
+            {
+              "word": "hello",
+              "start": 0.0,
+              "end": 0.7,
+              "confidence": 0.98
+            },
+            {
+              "word": "world",
+              "start": 0.7,
+              "end": 1.5,
+              "confidence": 0.94
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "type": "Error",
+    "err_code": "server_error",
+    "description": "Something went wrong",
+    "variant": "server_error"
+  }
+]

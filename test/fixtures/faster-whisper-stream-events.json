@@ -1,0 +1,64 @@
+[
+  {
+    "type": "ready",
+    "sessionId": "fixture-session-1",
+    "provider": "faster-whisper",
+    "protocolVersion": 1,
+    "model": "Systran/faster-whisper-small",
+    "language": "en",
+    "sampleRate": 16000,
+    "channels": 1,
+    "extraUnknownField": "tolerated"
+  },
+  {
+    "type": "partial",
+    "id": "seg-1",
+    "text": "hello wor",
+    "startMs": 0,
+    "endMs": 1200,
+    "extraUnknownField": "tolerated"
+  },
+  {
+    "type": "final",
+    "id": "seg-1",
+    "text": "hello world",
+    "startMs": 0,
+    "endMs": 1500
+  },
+  {
+    "type": "lagging",
+    "active": true
+  },
+  {
+    "type": "lagging",
+    "active": false
+  },
+  {
+    "type": "partial",
+    "id": "seg-2",
+    "text": "the quick brown",
+    "startMs": 0,
+    "endMs": 2100
+  },
+  {
+    "type": "error",
+    "code": "inference_failed",
+    "message": "inference failed",
+    "retryable": true
+  },
+  {
+    "type": "final",
+    "id": "seg-2",
+    "text": "the quick brown fox",
+    "startMs": 0,
+    "endMs": 2400
+  },
+  {
+    "type": "closed",
+    "reason": "client_stop"
+  },
+  {
+    "type": "heartbeat",
+    "unknownEventType": "forwarded-but-ignored"
+  }
+]

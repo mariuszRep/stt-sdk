@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "transaction_key": "deprecated",
+    "request_id": "req_batch_1",
+    "sha256": "abc123",
+    "created": "2026-08-12T00:00:00Z",
+    "duration": 2.4,
+    "channels": 1,
+    "models": ["nova-2"],
+    "model_info": {
+      "name": "nova-2",
+      "version": "2024-06-21.29434"
+    }
+  },
+  "results": {
+    "channels": [
+      {
+        "alternatives": [
+          {
+            "transcript": "Hello world from Deepgram.",
+            "confidence": 0.98,
+            "words": [
+              {
+                "word": "Hello",
+                "start": 0.0,
+                "end": 0.5,
+                "confidence": 0.99
+              },
+              {
+                "word": "world",
+                "start": 0.5,
+                "end": 1.0,
+                "confidence": 0.97
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

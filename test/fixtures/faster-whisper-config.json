@@ -1,0 +1,29 @@
+{
+  "schema_version": 4,
+  "model": "Systran/faster-whisper-small",
+  "host": "127.0.0.1",
+  "port": 8000,
+  "device": "cpu",
+  "requested_device": "cpu",
+  "active_device": "cpu",
+  "device_source": "auto",
+  "compute_type": "int8",
+  "cuda_available": false,
+  "cuda_runtime_ok": false,
+  "cuda_supported_compute_types": [],
+  "cuda_error": null,
+  "model_loaded": true,
+  "last_model_load_seconds": 1.2,
+  "last_queue_wait_seconds": 0.1,
+  "last_transcription_seconds": 0.9,
+  "last_total_seconds": 1.0,
+  "streaming": {
+    "enabled": true,
+    "endpoint": "/v1/audio/stream",
+    "protocolVersion": 1,
+    "encodings": ["pcm_s16le"],
+    "sampleRates": [16000, 44100, 48000],
+    "resample": true,
+    "channels": [1]
+  }
+}

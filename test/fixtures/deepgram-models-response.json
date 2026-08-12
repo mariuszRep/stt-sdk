@@ -1,0 +1,7 @@
+{
+  "models": [
+    { "name": "nova-2", "type": "model" },
+    { "name": "nova-3", "type": "model" },
+    { "name": "whisper-large", "type": "model" }
+  ]
+}
