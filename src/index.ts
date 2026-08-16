@@ -1,5 +1,5 @@
 /**
- * @voice-typer/stt-sdk
+ * @open-vibe-ai/stt-sdk
  *
  * Voice Typer provider-communication library: one normalized interface for
  * local runtime endpoints and cloud STT APIs.

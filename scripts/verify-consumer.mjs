@@ -58,7 +58,7 @@ try {
         version: "0.0.0",
         private: true,
         type: "module",
-        dependencies: { "@voice-typer/stt-sdk": `file:${tarball}` },
+        dependencies: { "@open-vibe-ai/stt-sdk": `file:${tarball}` },
         devDependencies: { typescript: "^5.7.3", "@types/node": "^22.10.0" },
       },
       null,
@@ -99,7 +99,7 @@ import {
   PROTOCOL_VERSION,
   RUNTIME_DESCRIPTOR_SCHEMA_VERSION,
   SttError,
-} from "@voice-typer/stt-sdk";
+} from "@open-vibe-ai/stt-sdk";
 import type {
   SttProvider,
   RuntimeConnectionDescriptor,
@@ -109,7 +109,7 @@ import type {
   TranscriptionResult,
   SessionState,
   StreamSession,
-} from "@voice-typer/stt-sdk";
+} from "@open-vibe-ai/stt-sdk";
 
 const local: SttProvider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
 const cloud: SttProvider = new DeepgramProvider({ apiKey: "test" });
@@ -169,7 +169,7 @@ void main();
   writeFileSync(
     join(fixture, "src", "require-check.cts"),
     `
-const sdk = require("@voice-typer/stt-sdk");
+const sdk = require("@open-vibe-ai/stt-sdk");
 const provider = new sdk.FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
 const dg = new sdk.DeepgramProvider({ apiKey: "test" });
 const fromDescriptor = sdk.createProvider({

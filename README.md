@@ -1,4 +1,4 @@
-# @voice-typer/stt-sdk
+# @open-vibe-ai/stt-sdk
 
 Voice Typer provider-communication library. One normalized TypeScript interface for
 local STT runtime endpoints (Faster Whisper, Whisper.cpp) and cloud STT APIs
@@ -12,7 +12,7 @@ or inference.
 ## Install
 
 ```bash
-npm install @voice-typer/stt-sdk
+npm install @open-vibe-ai/stt-sdk
 ```
 
 Node.js >= 18.18 (fetch/WebSocket globals) or any modern browser. The public entry
@@ -24,7 +24,7 @@ no Node-only APIs are required.
 ### Local batch transcription (Faster Whisper runtime)
 
 ```ts
-import { FasterWhisperProvider } from "@voice-typer/stt-sdk";
+import { FasterWhisperProvider } from "@open-vibe-ai/stt-sdk";
 
 const provider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
 const result = await provider.transcribe({ file, filename: "recording.webm", prompt: "context" });
@@ -34,7 +34,7 @@ console.log(result.text); // -> { text: "..." } preserved from the runtime
 ### Local streaming (protocol v1)
 
 ```ts
-import { FasterWhisperProvider } from "@voice-typer/stt-sdk";
+import { FasterWhisperProvider } from "@open-vibe-ai/stt-sdk";
 
 const provider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
 const session = await provider.createStream({
@@ -52,7 +52,7 @@ await session.stop();        // flushes final, server sends closed
 ### Cloud (Deepgram) — no server required
 
 ```ts
-import { DeepgramProvider } from "@voice-typer/stt-sdk";
+import { DeepgramProvider } from "@open-vibe-ai/stt-sdk";
 
 const provider = new DeepgramProvider({ apiKey: process.env.DEEPGRAM_API_KEY! });
 const result = await provider.transcribe({ file, filename: "recording.webm" });
@@ -68,7 +68,7 @@ const session = await provider.createStream({
 ### From a server-issued runtime descriptor
 
 ```ts
-import { createProvider } from "@voice-typer/stt-sdk";
+import { createProvider } from "@open-vibe-ai/stt-sdk";
 
 // descriptor: RuntimeConnectionDescriptor issued by stt-server for a local runtime
 const provider = createProvider(descriptor);
@@ -104,7 +104,7 @@ provider info; `transcribe`/`createStream`/`listModels` throw
 
 ## Delivery decisions (2026-08-12)
 
-- **Package name / versioning**: `@voice-typer/stt-sdk` v0.1.0, independently
+- **Package name / versioning**: `@open-vibe-ai/stt-sdk` v0.1.0, independently
   versioned with semantic versioning. `0.x` is initial development; compatibility is
   preserved within a major version per `CONVENTIONS.md`. Publishing to a registry
   requires the `@voice-typer` npm org and publish credentials (not configured yet).

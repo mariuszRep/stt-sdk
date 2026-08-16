@@ -1,5 +1,5 @@
 {
-  "name": "@voice-typer/stt-sdk",
+  "name": "@open-vibe-ai/stt-sdk",
   "version": "0.1.0",
   "description": "Voice Typer provider-communication library: one normalized interface for local runtime endpoints and cloud STT APIs.",
   "keywords": [
@@ -11,6 +11,9 @@
     "transcription"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
