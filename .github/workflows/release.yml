@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing (OIDC) requires npm >=11.5.1; the npm bundled with
+      # Node 22 may be older, so force an upgrade before install/publish.
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test
+
+      # No NPM_TOKEN: authentication is via OIDC trusted publishing, configured
+      # on npmjs.com for this exact repo + workflow filename (see stt-sdk's
+      # README/CONVENTIONS for the one-time npmjs.com setup steps).
+      - run: npm publish
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes "Published to npm as @open-vibe-ai/stt-sdk@${version}."
