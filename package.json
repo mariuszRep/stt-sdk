@@ -11,6 +11,10 @@
     "transcription"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mariuszRep/stt-sdk"
+  },
   "publishConfig": {
     "access": "public"
   },
