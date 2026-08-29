@@ -7,7 +7,46 @@ import {
   GroqProvider,
   UnsupportedCapabilityError,
 } from "../src";
+import { resolveFetch } from "../src/transport";
 import { createFakeWebSocketFactory } from "./fake-websocket";
+
+describe("resolveFetch — default must be safely callable as a method", () => {
+  it("the default (no fetchImpl override) is bound, not the raw global reference", () => {
+    // Regression test for a real production bug: every provider stores
+    // resolveFetch()'s return value as `this.fetchImpl` and calls it as
+    // `this.fetchImpl(...)` — a method call, not a bare `fetch(...)`
+    // reference. Real browser/WebView `fetch` implementations are WebIDL
+    // "platform objects" that brand-check their receiver and throw
+    // `TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation`
+    // the instant they're invoked with any receiver other than the realm
+    // global — exactly what `this.fetchImpl(...)` does for an unbound
+    // reference. Node's own global `fetch` (undici) does *not* enforce this
+    // receiver check, so a test that actually calls the resolved function
+    // can't reproduce the bug here — instead, this simulates the browser's
+    // brand check directly against a stand-in `fetch`, which is the one
+    // part of the real failure mode that's environment-independent: does
+    // `resolveFetch` hand back something still tied to its original
+    // receiver, or a plain unbound reference?
+    let receiverAtCallTime: unknown;
+    const fakeBrandCheckedFetch = function (this: unknown) {
+      receiverAtCallTime = this;
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      return Promise.resolve(new Response("ok"));
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fakeBrandCheckedFetch as typeof fetch;
+    try {
+      const resolved = resolveFetch({});
+      const holder = { fetchImpl: resolved };
+      expect(() => holder.fetchImpl("http://example.invalid")).not.toThrow();
+      expect(receiverAtCallTime).toBe(globalThis);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
 
 describe("Adapter seams — named entry points with explicit typed unsupported behavior", () => {
   const seams = [

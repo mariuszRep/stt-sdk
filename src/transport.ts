@@ -10,7 +10,15 @@ export interface TransportDeps {
 }
 
 export function resolveFetch(deps: TransportDeps): typeof fetch {
-  return deps.fetchImpl ?? globalThis.fetch;
+  // Bound, not the raw reference: every provider stores this as
+  // `this.fetchImpl` and later calls it as `this.fetchImpl(...)` — a method
+  // call. Native `fetch` requires its receiver to be the realm's global
+  // object; an unbound reference invoked that way throws
+  // `TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation`
+  // (or the equivalent in other engines). Binding here means every consumer
+  // gets a safely-callable default without having to know to pass their own
+  // `fetchImpl` just to work around this.
+  return deps.fetchImpl ?? globalThis.fetch.bind(globalThis);
 }
 
 export function resolveWebSocket(deps: TransportDeps): typeof WebSocket {
