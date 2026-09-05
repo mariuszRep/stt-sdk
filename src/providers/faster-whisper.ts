@@ -10,6 +10,8 @@ import type {
   SessionState,
   TranscriptEvent,
   TranscriptionResult,
+  TranscriptionSegment,
+  TranscriptWord,
 } from "../types";
 import { ApiError, ConnectionError, ProtocolError } from "../errors";
 
@@ -29,8 +31,60 @@ interface ConfigResponse {
   model: string;
 }
 
+interface TranscriptionWordResponse {
+  word: string;
+  start: number;
+  end: number;
+  probability: number;
+}
+
+interface TranscriptionSegmentResponse {
+  text: string;
+  start: number;
+  end: number;
+  avg_logprob: number;
+  no_speech_prob: number;
+  compression_ratio: number;
+  words?: TranscriptionWordResponse[];
+}
+
 interface TranscriptionResponse {
   text: string;
+  language?: string;
+  duration?: number;
+  segments?: TranscriptionSegmentResponse[];
+}
+
+function toTranscriptWord(word: TranscriptionWordResponse): TranscriptWord {
+  return {
+    word: word.word,
+    startMs: Math.round(word.start * 1000),
+    endMs: Math.round(word.end * 1000),
+    probability: word.probability,
+  };
+}
+
+function toTranscriptionSegment(segment: TranscriptionSegmentResponse): TranscriptionSegment {
+  return {
+    text: segment.text,
+    startMs: Math.round(segment.start * 1000),
+    endMs: Math.round(segment.end * 1000),
+    avgLogprob: segment.avg_logprob,
+    noSpeechProb: segment.no_speech_prob,
+    compressionRatio: segment.compression_ratio,
+    words: segment.words?.map(toTranscriptWord),
+  };
+}
+
+// The runtime response is additive over the historical `{ text }` contract — only
+// include `language`/`duration`/`segments` when the runtime actually sent them, so a
+// plain-text response still normalizes to a plain `{ text }` result.
+function toTranscriptionResult(body: TranscriptionResponse): TranscriptionResult {
+  const result: TranscriptionResult = { text: body.text ?? "" };
+  if (body.language !== undefined) result.language = body.language;
+  if (body.duration !== undefined) result.durationMs = Math.round(body.duration * 1000);
+  if (body.segments !== undefined) result.segments = body.segments.map(toTranscriptionSegment);
+  return result;
 }
 
 /**
@@ -125,7 +179,7 @@ export class FasterWhisperProvider implements SttProvider {
     }
 
     const body = (await res.json()) as TranscriptionResponse;
-    return { text: body.text ?? "" };
+    return toTranscriptionResult(body);
   }
 
   async createStream(config: StreamConfig): Promise<StreamSession> {

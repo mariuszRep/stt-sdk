@@ -169,6 +169,11 @@ export interface TranscriptionSegment {
   startMs: number;
   endMs: number;
   probability?: number;
+  words?: TranscriptWord[];
+  /** Decode-time confidence signals, where the provider exposes them (local runtime only). */
+  avgLogprob?: number;
+  noSpeechProb?: number;
+  compressionRatio?: number;
 }
 
 export interface TranscriptionResult {
