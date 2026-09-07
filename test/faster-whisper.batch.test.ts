@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { FasterWhisperProvider } from "../src/providers/faster-whisper";
-import { ApiError, ConnectionError } from "../src/errors";
+import { ApiError, ConnectionError, UnsupportedCapabilityError } from "../src/errors";
 import configFixture from "./fixtures/faster-whisper-config.json";
 import batchFixture from "./fixtures/faster-whisper-batch-response.json";
 import batchExtendedFixture from "./fixtures/faster-whisper-batch-response-extended.json";
@@ -153,8 +153,15 @@ describe("FasterWhisperProvider — models", () => {
       id: "faster-whisper",
       privacy: "local",
       supportsBatch: true,
-      supportsStreaming: true,
+      supportsStreaming: false,
       available: true,
     });
+  });
+
+  it("createStream throws UnsupportedCapabilityError (local WS streaming engine was removed)", async () => {
+    const provider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
+    await expect(
+      provider.createStream({ language: "en", model: "auto", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 }),
+    ).rejects.toBeInstanceOf(UnsupportedCapabilityError);
   });
 });

@@ -32,8 +32,6 @@ export function createProvider(
         case "faster-whisper":
           return new FasterWhisperProvider({
             baseUrl: descriptor.baseUrl,
-            streamingEndpoint: descriptor.streaming?.endpoint,
-            auth: descriptor.auth?.value,
             fetchImpl: deps.fetchImpl,
             WebSocketImpl: deps.WebSocketImpl,
           });

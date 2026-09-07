@@ -8,7 +8,6 @@ import {
   UnsupportedCapabilityError,
 } from "../src";
 import { resolveFetch } from "../src/transport";
-import { createFakeWebSocketFactory } from "./fake-websocket";
 
 describe("resolveFetch — default must be safely callable as a method", () => {
   it("the default (no fetchImpl override) is bound, not the raw global reference", () => {
@@ -102,43 +101,35 @@ describe("createProvider — runtime descriptor factory", () => {
     expect(provider).toBeInstanceOf(WhisperCppProvider);
   });
 
-  it("honors descriptor streaming endpoint and auth on the built provider", async () => {
-    const { WebSocketImpl, instances } = createFakeWebSocketFactory();
-    const provider = createProvider(
-      {
-        schemaVersion: 1,
-        provider: "faster-whisper",
-        protocol: "voice-typer-v1",
-        transport: "http",
-        baseUrl: "http://127.0.0.1:8000",
-        streaming: {
-          enabled: true,
-          endpoint: "/v1/audio/stream",
-          protocolVersion: 1,
-          encodings: ["pcm_s16le"],
-          sampleRates: [16000],
-          resample: true,
-          channels: [1],
-        },
-        auth: { type: "token", value: "secret-token" },
+  it("builds a batch-only FasterWhisperProvider even from a descriptor that still advertises a streaming block", async () => {
+    // A stale/older stt-server build could still send a `streaming` block (or
+    // one could reappear for a different runtime later) — the SDK must not
+    // resurrect WS behavior from descriptor data alone. FasterWhisperProvider
+    // is batch-only now; createStream() always rejects regardless of what the
+    // descriptor advertised.
+    const provider = createProvider({
+      schemaVersion: 1,
+      provider: "faster-whisper",
+      protocol: "voice-typer-v1",
+      transport: "http",
+      baseUrl: "http://127.0.0.1:8000",
+      streaming: {
+        enabled: true,
+        endpoint: "/v1/audio/stream",
+        protocolVersion: 1,
+        encodings: ["pcm_s16le"],
+        sampleRates: [16000],
+        resample: true,
+        channels: [1],
       },
-      { WebSocketImpl },
-    ) as FasterWhisperProvider;
+      auth: { type: "token", value: "secret-token" },
+    }) as FasterWhisperProvider;
 
-    const startPromise = provider.createStream({
-      language: "en",
-      model: "auto",
-      encoding: "pcm_s16le",
-      sampleRate: 16000,
-      channels: 1,
-    });
-    const ws = instances[0]!;
-    ws.simulateOpen();
-    const startMessage = JSON.parse(ws.sent[0] as string) as Record<string, unknown>;
-    expect(startMessage.auth).toBe("secret-token");
-    expect(ws.url).toBe("ws://127.0.0.1:8000/v1/audio/stream");
-    ws.simulateMessage(JSON.stringify({ type: "ready", sessionId: "s", provider: "faster-whisper", protocolVersion: 1, model: "m", language: "en", sampleRate: 16000, channels: 1 }));
-    await startPromise;
+    expect(provider).toBeInstanceOf(FasterWhisperProvider);
+    expect(provider.capability.supportsStreaming).toBe(false);
+    await expect(
+      provider.createStream({ language: "en", model: "auto", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 }),
+    ).rejects.toBeInstanceOf(UnsupportedCapabilityError);
   });
 
   it("rejects unknown protocols, providers, and schema versions with typed errors", () => {
