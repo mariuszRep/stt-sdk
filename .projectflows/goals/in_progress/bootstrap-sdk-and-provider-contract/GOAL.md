@@ -59,7 +59,7 @@ At drafting time, the App embedded reusable contracts in `packages/shared`, impl
    - runtime info/config discovery;
    - explicit typed unsupported behavior for streaming, without the removed local `WS /v1/audio/stream` implementation.
 4. Establish adapter seams for `WhisperCppProvider` and named cloud providers, retaining normalized generic streaming and using Deepgram batch/streaming as the selected cloud contract proof without `stt-server`.
-5. Migrate/reconcile reusable content from `whisper-vibes/packages/shared` and `stt-server/sdk` into this package as the sole public provider contract.
+5. Completed: reconcile the former App/server-local contract copies into this package as the sole public provider contract; `stt-server/sdk` has been removed and `whisper-vibes/packages/shared` re-exports SDK types rather than competing definitions.
 6. Add unit, protocol-fixture, and package-consumer tests; publish artifacts consumable by clean App and Server CI jobs.
 
 ## Out of Scope
@@ -93,7 +93,7 @@ At drafting time, the App embedded reusable contracts in `packages/shared`, impl
 - Historical local streaming adapter and protocol lifecycle (not part of the current faster-whisper target after the 2026-09-05 removal decision): `whisper-vibes/apps/web/src/providers/voice-typer-ws-provider.ts:1-164`.
 - Shared live-transcription types are now consumed from the SDK through `whisper-vibes/packages/shared/src/index.ts:7-33`.
 - Historical runtime protocol baseline: `whisper-vibes/backend/app/main.py:141-207,280-464` and `whisper-vibes/backend/app/streaming.py:35-227`; retain its normalized generic event concepts without restoring local faster-whisper WS streaming.
-- Existing embedded SDK to reconcile/remove as a duplicate: `stt-server/sdk/package.json:1-22`.
+- Historical duplicate removed: `stt-server/sdk` no longer exists; `bootstrap-local-stt-server` records that cleanup.
 
 ## Risks / Unknowns
 
