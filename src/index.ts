@@ -44,6 +44,7 @@ export type { SttProvider } from "./provider";
 export { createProvider } from "./factory";
 
 export {
+  LocalRuntimeProvider,
   FasterWhisperProvider,
   DeepgramProvider,
   WhisperCppProvider,
@@ -51,6 +52,7 @@ export {
   GroqProvider,
 } from "./providers";
 export type {
+  LocalRuntimeOptions,
   FasterWhisperOptions,
   DeepgramOptions,
   WhisperCppOptions,

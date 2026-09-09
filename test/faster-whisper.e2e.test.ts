@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { FasterWhisperProvider } from "../src/providers/faster-whisper";
+import { createProvider } from "../src/factory";
 import configFixture from "./fixtures/faster-whisper-config.json";
 
 /**
@@ -96,5 +97,70 @@ describe("FasterWhisperProvider — e2e against an in-process runtime", () => {
     const provider = new FasterWhisperProvider({ baseUrl: `http://127.0.0.1:${port}` });
     const models = await provider.listModels();
     expect(models[0]?.id).toBe("Systran/faster-whisper-small");
+  });
+});
+
+/**
+ * Real end-to-end auth test (`protocol-driven-local-provider`'s Risk #3:
+ * "Auth is untested end to end anywhere today"). A real in-process HTTP
+ * server that actually enforces a bearer token -- unlike faster-whisper's
+ * own Python sidecar, which does not (see `fix-faster-whisper-auth-enforcement`)
+ * -- so this proves the client-side `Authorization` header wiring against a
+ * server that genuinely checks it, over a real socket, not just asserting
+ * header construction in isolation.
+ */
+describe("createProvider — auth over real HTTP against a token-enforcing runtime", () => {
+  let server: Server;
+  let port: number;
+  const requiredToken = "e2e-secret-token";
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${requiredToken}`) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      if (req.url === "/v1/audio/transcriptions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ text: "authenticated result" }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("a descriptor with the correct token succeeds against a real token-enforcing server", async () => {
+    const provider = createProvider({
+      schemaVersion: 1,
+      provider: "sherpa-onnx",
+      protocol: "voice-typer-v1",
+      transport: "http",
+      baseUrl: `http://127.0.0.1:${port}`,
+      auth: { type: "token", value: requiredToken },
+    });
+    const result = await provider.transcribe({ file: new Uint8Array([1, 2, 3]) });
+    expect(result.text).toBe("authenticated result");
+  });
+
+  it("a descriptor with no auth field is rejected by a real token-enforcing server", async () => {
+    const provider = createProvider({
+      schemaVersion: 1,
+      provider: "sherpa-onnx",
+      protocol: "voice-typer-v1",
+      transport: "http",
+      baseUrl: `http://127.0.0.1:${port}`,
+    });
+    await expect(provider.transcribe({ file: new Uint8Array([1, 2, 3]) })).rejects.toMatchObject({
+      status: 401,
+    });
   });
 });

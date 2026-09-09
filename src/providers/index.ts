@@ -1,3 +1,5 @@
+export { LocalRuntimeProvider } from "./local-runtime";
+export type { LocalRuntimeOptions } from "./local-runtime";
 export { FasterWhisperProvider } from "./faster-whisper";
 export type { FasterWhisperOptions } from "./faster-whisper";
 export { DeepgramProvider } from "./deepgram";

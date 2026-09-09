@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   createProvider,
+  LocalRuntimeProvider,
   FasterWhisperProvider,
   WhisperCppProvider,
   OpenAIProvider,
@@ -78,7 +79,18 @@ describe("Adapter seams — named entry points with explicit typed unsupported b
 });
 
 describe("createProvider — runtime descriptor factory", () => {
-  it("maps a faster-whisper descriptor to FasterWhisperProvider", () => {
+  // Deliberately inverted from this suite's pre-2026-09-09 behavior:
+  // createProvider used to switch on descriptor.provider (accepting only
+  // "faster-whisper"/"whisper-cpp" and throwing for anything else, mapping
+  // to the named FasterWhisperProvider/WhisperCppProvider classes). It now
+  // selects on descriptor.protocol alone — any "voice-typer-v1" descriptor
+  // gets the same real LocalRuntimeProvider, regardless of what
+  // descriptor.provider says, so a conformant runtime this SDK has never
+  // heard the name of (sherpad's "sherpa-onnx", or anyone's own runtime)
+  // works without an SDK release. See protocol-driven-local-provider's
+  // goal file for the full rationale. Do not "fix" these assertions back.
+
+  it("maps a voice-typer-v1 descriptor to LocalRuntimeProvider, using descriptor.provider only as a label", () => {
     const provider = createProvider({
       schemaVersion: 1,
       provider: "faster-whisper",
@@ -86,11 +98,35 @@ describe("createProvider — runtime descriptor factory", () => {
       transport: "http",
       baseUrl: "http://127.0.0.1:8000",
     });
-    expect(provider).toBeInstanceOf(FasterWhisperProvider);
+    expect(provider).toBeInstanceOf(LocalRuntimeProvider);
     expect(provider.id).toBe("faster-whisper");
+    expect(provider.capability.id).toBe("faster-whisper");
   });
 
-  it("maps a whisper-cpp descriptor to the WhisperCppProvider seam", () => {
+  it("works for a provider name this SDK has never been told about (e.g. sherpa-onnx)", () => {
+    // The whole point: adding a new engine on the stt-server side must
+    // never require an SDK release. Nothing here names "sherpa-onnx"
+    // anywhere in src/ — this descriptor's provider string could be
+    // anything and still work, because dispatch is on protocol alone.
+    const provider = createProvider({
+      schemaVersion: 1,
+      provider: "sherpa-onnx",
+      protocol: "voice-typer-v1",
+      transport: "http",
+      baseUrl: "http://127.0.0.1:7891",
+    });
+    expect(provider).toBeInstanceOf(LocalRuntimeProvider);
+    expect(provider.id).toBe("sherpa-onnx");
+    expect(provider.capability.available).toBe(true);
+    expect(provider.capability.supportsBatch).toBe(true);
+  });
+
+  it("a whisper-cpp descriptor now also gets a real, working LocalRuntimeProvider (not the stubbed WhisperCppProvider seam)", () => {
+    // WhisperCppProvider (constructed directly — see the seams describe
+    // block above) remains the deliberately-stubbed, always-throws class it
+    // always was; it is simply no longer what createProvider returns for a
+    // "whisper-cpp"-labeled descriptor, since dispatch no longer reads that
+    // field at all.
     const provider = createProvider({
       schemaVersion: 1,
       provider: "whisper-cpp",
@@ -98,15 +134,16 @@ describe("createProvider — runtime descriptor factory", () => {
       transport: "http",
       baseUrl: "http://127.0.0.1:8001",
     });
-    expect(provider).toBeInstanceOf(WhisperCppProvider);
+    expect(provider).toBeInstanceOf(LocalRuntimeProvider);
+    expect(provider).not.toBeInstanceOf(WhisperCppProvider);
   });
 
-  it("builds a batch-only FasterWhisperProvider even from a descriptor that still advertises a streaming block", async () => {
+  it("builds a batch-only provider even from a descriptor that still advertises a streaming block", async () => {
     // A stale/older stt-server build could still send a `streaming` block (or
     // one could reappear for a different runtime later) — the SDK must not
-    // resurrect WS behavior from descriptor data alone. FasterWhisperProvider
-    // is batch-only now; createStream() always rejects regardless of what the
-    // descriptor advertised.
+    // resurrect WS behavior from descriptor data alone. Every local runtime
+    // provider is batch-only today; createStream() always rejects regardless
+    // of what the descriptor advertised.
     const provider = createProvider({
       schemaVersion: 1,
       provider: "faster-whisper",
@@ -123,16 +160,65 @@ describe("createProvider — runtime descriptor factory", () => {
         channels: [1],
       },
       auth: { type: "token", value: "secret-token" },
-    }) as FasterWhisperProvider;
+    });
 
-    expect(provider).toBeInstanceOf(FasterWhisperProvider);
     expect(provider.capability.supportsStreaming).toBe(false);
     await expect(
       provider.createStream({ language: "en", model: "auto", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 }),
     ).rejects.toBeInstanceOf(UnsupportedCapabilityError);
   });
 
-  it("rejects unknown protocols, providers, and schema versions with typed errors", () => {
+  it("FasterWhisperProvider remains directly constructible with its historical id/capability, for source compatibility", () => {
+    const provider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
+    expect(provider).toBeInstanceOf(FasterWhisperProvider);
+    expect(provider).toBeInstanceOf(LocalRuntimeProvider);
+    expect(provider.id).toBe("faster-whisper");
+    expect(provider.capability.displayName).toBe("Faster Whisper (local)");
+  });
+
+  it("sends Authorization: Bearer <value> on every request when the descriptor carries a token, and no such header otherwise", async () => {
+    const calls: RequestInit[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Response(JSON.stringify({ text: "hi" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const authed = createProvider(
+      {
+        schemaVersion: 1,
+        provider: "sherpa-onnx",
+        protocol: "voice-typer-v1",
+        transport: "http",
+        baseUrl: "http://127.0.0.1:7891",
+        auth: { type: "token", value: "secret-token" },
+      },
+      { fetchImpl },
+    );
+    await authed.transcribe({ file: new Uint8Array([1]) });
+    expect((calls[0]?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer secret-token",
+    );
+
+    calls.length = 0;
+    const unauthed = createProvider(
+      {
+        schemaVersion: 1,
+        provider: "sherpa-onnx",
+        protocol: "voice-typer-v1",
+        transport: "http",
+        baseUrl: "http://127.0.0.1:7891",
+      },
+      { fetchImpl },
+    );
+    await unauthed.transcribe({ file: new Uint8Array([1]) });
+    expect(calls[0]?.headers).toBeUndefined();
+  });
+
+  it("rejects unknown protocols and schema versions with typed errors; an unrecognized provider name alone is not rejected", () => {
+    // An unrecognized *protocol* is a real wire-contract incompatibility —
+    // still rejected. An unrecognized *provider name* is not (see the
+    // "works for a provider name this SDK has never been told about" test
+    // above) — that distinction is this goal's entire point.
     expect(() =>
       createProvider({
         schemaVersion: 1,
@@ -141,7 +227,7 @@ describe("createProvider — runtime descriptor factory", () => {
         transport: "http",
         baseUrl: "http://x",
       }),
-    ).toThrow(UnsupportedCapabilityError);
+    ).not.toThrow();
 
     expect(() =>
       createProvider({
