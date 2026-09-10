@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { FasterWhisperProvider } from "../src/providers/faster-whisper";
-import { ApiError, ConnectionError } from "../src/errors";
+import { ApiError, ConnectionError, UnsupportedCapabilityError } from "../src/errors";
 import configFixture from "./fixtures/faster-whisper-config.json";
 import batchFixture from "./fixtures/faster-whisper-batch-response.json";
+import batchExtendedFixture from "./fixtures/faster-whisper-batch-response-extended.json";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -45,6 +46,33 @@ describe("FasterWhisperProvider — batch contract (preserved from App api.ts)",
     expect(form.get("prompt")).toBeNull(); // no prompt by default
 
     expect(result).toEqual({ text: "hello world from the faster whisper runtime" });
+  });
+
+  it("parses word timestamps and segment quality metadata when the runtime sends them", async () => {
+    const provider = new FasterWhisperProvider({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: mockFetch([], () => jsonResponse(batchExtendedFixture)),
+    });
+
+    const result = await provider.transcribe({ file: new Uint8Array([1, 2, 3]) });
+
+    expect(result.text).toBe("hello world");
+    expect(result.language).toBe("en");
+    expect(result.durationMs).toBe(1500);
+    expect(result.segments).toEqual([
+      {
+        text: "hello world",
+        startMs: 0,
+        endMs: 1500,
+        avgLogprob: -0.2,
+        noSpeechProb: 0.01,
+        compressionRatio: 1.1,
+        words: [
+          { word: "hello", startMs: 0, endMs: 600, probability: 0.98 },
+          { word: "world", startMs: 700, endMs: 1500, probability: 0.95 },
+        ],
+      },
+    ]);
   });
 
   it("appends a trimmed prompt and keeps the provided filename", async () => {
@@ -125,8 +153,15 @@ describe("FasterWhisperProvider — models", () => {
       id: "faster-whisper",
       privacy: "local",
       supportsBatch: true,
-      supportsStreaming: true,
+      supportsStreaming: false,
       available: true,
     });
+  });
+
+  it("createStream throws UnsupportedCapabilityError (local WS streaming engine was removed)", async () => {
+    const provider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
+    await expect(
+      provider.createStream({ language: "en", model: "auto", encoding: "pcm_s16le", sampleRate: 16000, channels: 1 }),
+    ).rejects.toBeInstanceOf(UnsupportedCapabilityError);
   });
 });

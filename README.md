@@ -31,23 +31,13 @@ const result = await provider.transcribe({ file, filename: "recording.webm", pro
 console.log(result.text); // -> { text: "..." } preserved from the runtime
 ```
 
-### Local streaming (protocol v1)
-
-```ts
-import { FasterWhisperProvider } from "@open-vibe-ai/stt-sdk";
-
-const provider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
-const session = await provider.createStream({
-  language: "en",
-  model: "auto",
-  encoding: "pcm_s16le",
-  sampleRate: 48000,
-  channels: 1,
-});
-session.onEvent = (event) => console.log(event.type, event);
-session.sendAudio(pcmBytes); // raw int16 little-endian PCM
-await session.stop();        // flushes final, server sends closed
-```
+`FasterWhisperProvider` is batch-only — it previously also implemented a local
+`WS /v1/audio/stream` streaming session (`createStream()`), removed once it
+became clear it was never actually the source of committed/pasted text, only
+a preview overlay (see `providers/faster-whisper.ts`'s class doc comment).
+`createStream()` now throws `UnsupportedCapabilityError`, matching
+`WhisperCppProvider`/`OpenAIProvider`/`GroqProvider` below. For real
+streaming, see the Deepgram example next.
 
 ### Cloud (Deepgram) — no server required
 
@@ -92,7 +82,7 @@ const provider = createProvider(descriptor);
 
 | Adapter | Status | Transport |
 |---|---|---|
-| `FasterWhisperProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`) + WS stream (`WS /v1/audio/stream`) |
+| `FasterWhisperProvider` | implemented (batch-only) | HTTP batch (`POST /v1/audio/transcriptions`) |
 | `DeepgramProvider` | implemented (cloud proof) | REST `POST /v1/listen` + WS `wss://api.deepgram.com/v1/listen` |
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
@@ -119,12 +109,13 @@ provider info; `transcribe`/`createStream`/`listModels` throw
 ## Protocol preservation
 
 - Batch: multipart `POST /v1/audio/transcriptions` with `file` + optional `prompt`;
-  response `{ text }` — the OpenDora-compatible contract.
-- Stream: `WS /v1/audio/stream`, `start` (protocolVersion 1) → `ready` → binary PCM →
-  `partial`/`final`/`lagging`/`error` → `stop`/`abort` → `closed`. Unknown event
-  types and unknown fields are tolerated; events are forwarded to `onEvent`.
-- The streaming client buffers audio until the server confirms `ready`, exactly like
-  the historical App provider.
+  response `{ text }` (additively including `language`/`duration`/`segments` when the
+  runtime sends them) — the OpenDora-compatible contract.
+- `FasterWhisperProvider` no longer implements the local `WS /v1/audio/stream`
+  protocol — see "Adapters" above. Deepgram's own streaming protocol (`wss://
+  api.deepgram.com/v1/listen`) is unaffected; unknown event types/fields there are
+  still tolerated and forwarded to `onEvent`, and its client still buffers audio
+  until the server confirms readiness.
 
 ## Non-goals
 
@@ -146,7 +137,14 @@ npm run verify:consumer   # pack + install into a blank consumer fixture + typec
 ## Reconcile note
 
 Historical contract sources (`whisper-vibes/packages/shared`,
-`whisper-vibes/apps/web/src/lib/api.ts`, `whisper-vibes/apps/web/src/providers/voice-typer-ws-provider.ts`,
-`stt-server/sdk`) are legacy duplicates. Their owning repositories must migrate to
-consume this published package and remove the duplicated contract source; this
-repository does not import from them by path, workspace link, or copy.
+`whisper-vibes/apps/web/src/lib/api.ts`, `stt-server/sdk`) are legacy duplicates.
+Their owning repositories must migrate to consume this published package and
+remove the duplicated contract source; this repository does not import from
+them by path, workspace link, or copy.
+
+`whisper-vibes/apps/web/src/providers/voice-typer-ws-provider.ts` no longer
+exists — it implemented the local WS streaming engine, which was removed
+(along with this SDK's own `FasterWhisperProvider.createStream()`) once it
+became clear it was never actually the source of committed/pasted text, only
+a preview overlay. See this package's own `providers/faster-whisper.ts` class
+doc comment.
