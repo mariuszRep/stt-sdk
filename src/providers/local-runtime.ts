@@ -112,6 +112,11 @@ function toTranscriptionResult(body: TranscriptionResponse): TranscriptionResult
  * request carries `Authorization: Bearer <token>` when the descriptor
  * supplied one.
  *
+ * `prompt` is only honored by the faster-whisper runtime today — it's
+ * accepted on the wire by the sherpa-onnx (ONNX) runtime but silently
+ * has no effect on its output. See stt-server's
+ * `support-vocabulary-in-sherpa-onnx` goal.
+ *
  * Batch-only: local streaming was removed (see `FasterWhisperProvider`'s
  * own doc comment / the 2026-09-05 decision) and no local runtime
  * advertises it today: `createStream()` throws
