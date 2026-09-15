@@ -19,15 +19,29 @@ function run(cmd, opts = {}) {
   return execSync(cmd, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], ...opts });
 }
 
-// 1. Pack. The `prepack` hook (tsup build) writes banner lines to stdout before
-// the `--json` array, so parse from the first `[`.
-const packJson = run("npm pack --json");
+// 1. Pack. The `prepack` hook (tsup build) writes banner lines to stdout
+// before the `--json` array -- including ANSI color escape codes (e.g.
+// `\x1b[34m`), which themselves contain `[` characters, so a plain
+// `indexOf("[")` can land on a color code instead of the real JSON (and
+// npm's JSON is pretty-printed, `[` and `{` on separate lines, so anchoring
+// on the literal substring `"[{"` doesn't match at all). Strip ANSI escape
+// sequences first, then the first remaining `[` is genuinely the array's
+// opening bracket.
+const rawPackOutput = run("npm pack --json");
+// eslint-disable-next-line no-control-regex -- deliberately matching ANSI CSI sequences
+const packJson = rawPackOutput.replace(/\x1b\[[0-9;]*m/g, "");
 const [{ filename }] = JSON.parse(packJson.slice(packJson.indexOf("[")));
 const tarball = join(root, filename);
 console.log(`Packed ${filename}`);
 
-// 2. Audit tarball contents.
-const entries = run(`tar -tzf "${tarball}"`).trim().split("\n");
+// 2. Audit tarball contents. Passed as a path relative to `run()`'s cwd
+// (`root`), not the absolute `tarball` path -- on Windows, an absolute path
+// like `D:\...` makes some `tar` implementations (both GNU tar and
+// libarchive/bsdtar) misparse the drive letter's colon as an old-style
+// `host:path` remote-archive spec ("Cannot connect to D:"), since that
+// syntax predates Windows drive letters. A relative path has no colon and
+// sidesteps the ambiguity entirely.
+const entries = run(`tar -tzf "${filename}"`).trim().split("\n");
 console.log(`Tarball entries: ${entries.length}`);
 const forbidden = entries.filter(
   (e) =>
@@ -188,7 +202,7 @@ console.log(provider.capability.id, dg.capability.id, fromDescriptor.id, sdk.PRO
   console.log("Typechecking consumer (ESM + CJS) against the installed package…");
   run("npx tsc --noEmit", { cwd: fixture });
 
-  const installed = existsSync(join(fixture, "node_modules", "@voice-typer", "stt-sdk", "dist", "index.js"));
+  const installed = existsSync(join(fixture, "node_modules", "@open-vibe-ai", "stt-sdk", "dist", "index.js"));
   if (!installed) {
     console.error("Installed package missing dist/index.js");
     process.exit(1);
