@@ -2,21 +2,13 @@
 name: protocol-driven-local-provider
 title: Select Local Providers by Protocol, Not by Engine Name
 description: Replace createProvider's hardcoded per-engine switch with one local adapter selected on descriptor.protocol, and wire the descriptor's auth field, so any conformant runtime works without an SDK release.
-status: in_progress
+status: done
 type: refactor
 scope: stt-sdk/src/factory.ts, src/providers/, src/index.ts, test/seams.test.ts, test/faster-whisper.e2e.test.ts
 attempt: 1
 max_attempts: 5
-last_result: partial
-next_action: |
-  All code, tests, and manual verification complete. One acceptance check (npm run verify:consumer)
-  could not run due to a pre-existing, unrelated environment issue: npm pack --json's prepack hook
-  (which runs the build) writes tsup's build log to stdout ahead of the JSON output, breaking
-  verify-consumer.mjs's JSON.parse regardless of any SDK code change -- reproduced with a bare
-  `npm pack --json --dry-run` on this checkout, nothing to do with this goal's changes. Re-run
-  verify:consumer once that tooling issue is fixed (likely as part of bootstrap-sdk-and-provider-contract,
-  which already owns release/consumer-verification mechanics and already has one other known bug
-  logged against the same script).
+last_result: passed — all code, tests, and verify:consumer pass; manual proof against real sherpad stands
+next_action: none
 success_criteria:
   - createProvider selects the local adapter on descriptor.protocol rather than descriptor.provider, so a conformant runtime with an unknown provider id works.
   - FasterWhisperProvider and WhisperCppProvider remain exported and behaviourally unchanged for existing consumers.
@@ -208,18 +200,26 @@ is concentrated entirely in the factory's second switch, and everything downstre
 - 2026-09-09 — `npm run verify:consumer`: did not complete — pre-existing, SDK-code-independent
   tooling issue (see Do Not Repeat). `npm test`/`typecheck` plus the manual proof above stand in for
   it for this attempt.
+- 2026-09-15 — the blocking tooling issue is fixed (`bootstrap-sdk-and-provider-contract`, commit
+  `43c9a29`: `verify-consumer.mjs` had three real bugs -- wrong package name, an ANSI-color-breaks-
+  JSON-parsing issue in the `npm pack --json` handling, and a Windows-specific `tar` path bug --
+  none of them caused by this goal's changes). Re-ran the full suite on this goal's code with the
+  fix in place: `npm run typecheck` clean, `npm test` 30/30 passing, `npm run build` clean, and
+  `npm run verify:consumer` **passes for the first time** (tarball audit, blank-fixture install,
+  ESM+CJS typecheck against the packed `0.3.0` tarball). The manual proof against real `sherpad`
+  from 2026-09-09 stands unchanged.
 
 ## Final Outcome
 
-**Complete except one unrunnable, pre-existing-and-unrelated acceptance check.** Every code change,
-every test (including three new ones specifically proving the goal's premise), and the required
-manual standalone-usage verification are done and passing. `descriptor.auth` is no longer dead code —
-proven against a real server that actually enforces it, both in an automated e2e test and manually
-against real `sherpad`. `FasterWhisperProvider`/`WhisperCppProvider` remain exported with unchanged
-behavior. The only gap is `verify:consumer`, blocked by tooling unrelated to this goal's scope.
+**Complete.** Every code change, every test (including three new ones specifically proving the
+goal's premise), the required manual standalone-usage verification, and now `verify:consumer` are
+done and passing. `descriptor.auth` is no longer dead code — proven against a real server that
+actually enforces it, both in an automated e2e test and manually against real `sherpad`.
+`FasterWhisperProvider`/`WhisperCppProvider` remain exported with unchanged behavior. The one gap
+from attempt 1 (`verify:consumer` blocked by tooling unrelated to this goal) is now closed by
+`bootstrap-sdk-and-provider-contract`'s fix to that same script.
 
 ## Ready For Execution
 
-- Status: in_progress
-- Reason: Functionally complete; `verify:consumer` re-run is the only remaining item, gated on a
-  separate tooling fix outside this goal's scope.
+- Status: done
+- Reason: Every success criterion and acceptance check now passes, including `verify:consumer`.
