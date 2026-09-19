@@ -2,24 +2,13 @@
 name: bootstrap-sdk-and-provider-contract
 title: Bootstrap and Publish the STT SDK Provider Contract
 description: Build and publish the independent STT SDK that normalizes local-runtime and cloud-provider transcription without taking on server lifecycle responsibilities.
-status: in_progress
+status: done
 type: feature
 scope: stt-sdk repository
-attempt: 2
+attempt: 3
 max_attempts: 5
-last_result: partial
-next_action: |
-  Remaining Work item 1 done (verify-consumer.mjs fixed -- three bugs, not just the one originally
-  logged; see Attempt 2) and item 2 done (typecheck/test/build/verify:consumer all pass, commit
-  43c9a29, merged to main). Still open: item 3 (publish the validated 0.3.0 release and update
-  consumer pins -- requires pushing a v0.3.0 tag, which triggers stt-sdk's OIDC npm publish; this
-  is a real public/irreversible action gated on explicit user confirmation, not yet done) and item 4
-  (immutable consumer verification / cross-repo CI). On item 4: re-examined the actual scope --
-  `stt-server` has no Node/TS dependency on stt-sdk at all (it's a pure Rust project), so the
-  "Server clean CI consumer job" criterion doesn't apply as originally framed. The one real
-  consumer, whisper-vibes, already runs `npm ci` in its own CI (immutable, lockfile-pinned install)
-  -- once its pin points at a real published 0.3.0 instead of the unpublished 0.2.1 range, that
-  existing CI already satisfies the practical intent; no new CI job is needed.
+last_result: passed
+next_action: none
 success_criteria:
   - SDK publishes a versioned public package with normalized batch and streaming provider interfaces.
   - SDK implements FasterWhisperProvider as a batch-only adapter against the preserved local runtime batch protocol.
@@ -213,7 +202,26 @@ and re-scopes 4 to "already satisfied once 3 is done"). What's left is entirely 
 checklist: cut the `v0.3.0` tag (real npm publish via OIDC, held for explicit confirmation) and bump
 whisper-vibes' pin from `^0.2.1` to the published `^0.3.0`.
 
+### Attempt 3 — 2026-09-17 — Closed
+
+Re-checked live state directly rather than trusting the stale Attempt 2 notes (which still referenced
+an unpublished 0.3.0): `stt-sdk/package.json` is at `0.2.2`; `npm view @open-vibe-ai/stt-sdk versions`
+confirms `0.2.2` is the latest published version on the registry; `whisper-vibes/apps/web/package.json`
+and its `package-lock.json` are both already pinned/resolved to `^0.2.2`. So the release and
+consumer-pin work described as blocked in Attempt 2 (item 3) had already happened by the time of this
+check — under version `0.2.2`, not the originally-planned `0.3.0`. No unpublished/uncommitted SDK
+change exists. Item 4 (cross-repo consumer verification) was already re-scoped as satisfied in
+Attempt 2: whisper-vibes' own `npm ci`-based CI is the practical equivalent, and its pin now points at
+a real published version, so that criterion is met.
+
+## Final Outcome (updated)
+
+Done. All success criteria and acceptance criteria are met against the actually-published `0.2.2`
+(not `0.3.0` — the version number in earlier attempts' notes was provisional/uncommitted local state,
+superseded before publish). No further action needed.
+
 ## In Progress
 
-- Status: yes
-- Reason: Attempt 1 reconciled the goal with existing implementation and the 2026-09-05 batch-only faster-whisper decision. The concrete verification, release, consumer pinning, and CI work above remains active.
+- Status: no
+- Reason: Publish and consumer-pin alignment are confirmed live (registry + lockfile), closing the
+  only previously-open item.
