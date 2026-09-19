@@ -107,6 +107,35 @@ describe("FasterWhisperProvider — batch contract (preserved from App api.ts)",
     expect(form.get("language")).toBe("es");
   });
 
+  it("omits model by default", async () => {
+    const captures: Capture[] = [];
+    const provider = new FasterWhisperProvider({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: mockFetch(captures),
+    });
+
+    await provider.transcribe({ file: new Uint8Array([1, 2, 3]) });
+
+    const form = captures[0]!.init!.body as FormData;
+    expect(form.get("model")).toBeNull();
+  });
+
+  it("appends a trimmed model override", async () => {
+    const captures: Capture[] = [];
+    const provider = new FasterWhisperProvider({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: mockFetch(captures),
+    });
+
+    await provider.transcribe({
+      file: new Uint8Array([1, 2, 3]),
+      model: "  Systran/faster-whisper-base  ",
+    });
+
+    const form = captures[0]!.init!.body as FormData;
+    expect(form.get("model")).toBe("Systran/faster-whisper-base");
+  });
+
   it("throws ApiError with status on non-ok responses", async () => {
     const provider = new FasterWhisperProvider({
       baseUrl: "http://127.0.0.1:8000",
