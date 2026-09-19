@@ -44,6 +44,7 @@ describe("FasterWhisperProvider — batch contract (preserved from App api.ts)",
     const file = form.get("file") as File;
     expect(file.name).toBe("recording.webm"); // default filename preserved
     expect(form.get("prompt")).toBeNull(); // no prompt by default
+    expect(form.get("language")).toBeNull(); // no language by default
 
     expect(result).toEqual({ text: "hello world from the faster whisper runtime" });
   });
@@ -91,6 +92,19 @@ describe("FasterWhisperProvider — batch contract (preserved from App api.ts)",
     const form = captures[0]!.init!.body as FormData;
     expect(form.get("prompt")).toBe("previous line + context");
     expect((form.get("file") as File).name).toBe("recording.webm");
+  });
+
+  it("appends a trimmed language hint", async () => {
+    const captures: Capture[] = [];
+    const provider = new FasterWhisperProvider({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: mockFetch(captures),
+    });
+
+    await provider.transcribe({ file: new Uint8Array([1, 2, 3]), language: "  es  " });
+
+    const form = captures[0]!.init!.body as FormData;
+    expect(form.get("language")).toBe("es");
   });
 
   it("throws ApiError with status on non-ok responses", async () => {

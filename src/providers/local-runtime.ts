@@ -106,16 +106,18 @@ function toTranscriptionResult(body: TranscriptionResponse): TranscriptionResult
  * source compatibility; its actual wire behavior is this class's.
  *
  * Wire contract: batch multipart `POST /v1/audio/transcriptions` with
- * `file` (+ optional `prompt`, no `model` — a managed runtime serves the
- * single model it was launched with), response `{ text, language?,
- * duration?, segments? }`. `GET /v1/config` for `listModels()`. Every
- * request carries `Authorization: Bearer <token>` when the descriptor
- * supplied one.
+ * `file` (+ optional `prompt`/`language`, no `model` — a managed runtime
+ * serves the single model it was launched with), response `{ text,
+ * language?, duration?, segments? }`. `GET /v1/config` for `listModels()`.
+ * Every request carries `Authorization: Bearer <token>` when the
+ * descriptor supplied one.
  *
- * `prompt` is only honored by the faster-whisper runtime today — it's
- * accepted on the wire by the sherpa-onnx (ONNX) runtime but silently
- * has no effect on its output. See stt-server's
- * `support-vocabulary-in-sherpa-onnx` goal.
+ * `prompt` and `language` are both only honored by the faster-whisper
+ * runtime today — sherpa-onnx accepts neither field's real effect: `prompt`
+ * is silently dropped (see stt-server's `support-vocabulary-in-sherpa-onnx`
+ * goal) and sherpa-onnx's wire protocol has no `language` field at all
+ * (language is fixed at model-load time there, not per-request) — callers
+ * should not send `language` for a sherpa-onnx-backed descriptor.
  *
  * Batch-only: local streaming was removed (see `FasterWhisperProvider`'s
  * own doc comment / the 2026-09-05 decision) and no local runtime
@@ -173,6 +175,9 @@ export class LocalRuntimeProvider implements SttProvider {
     form.append("file", toBlob(request.file), request.filename ?? "recording.webm");
     if (request.prompt && request.prompt.trim()) {
       form.append("prompt", request.prompt.trim());
+    }
+    if (request.language && request.language.trim()) {
+      form.append("language", request.language.trim());
     }
 
     let res: Response;
