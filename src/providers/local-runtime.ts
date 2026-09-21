@@ -106,16 +106,24 @@ function toTranscriptionResult(body: TranscriptionResponse): TranscriptionResult
  * source compatibility; its actual wire behavior is this class's.
  *
  * Wire contract: batch multipart `POST /v1/audio/transcriptions` with
- * `file` (+ optional `prompt`, no `model` — a managed runtime serves the
- * single model it was launched with), response `{ text, language?,
- * duration?, segments? }`. `GET /v1/config` for `listModels()`. Every
- * request carries `Authorization: Bearer <token>` when the descriptor
- * supplied one.
+ * `file` (+ optional `prompt`/`language`/`model`), response `{ text,
+ * language?, duration?, segments? }`. `GET /v1/config` for `listModels()`.
+ * Every request carries `Authorization: Bearer <token>` when the
+ * descriptor supplied one.
  *
- * `prompt` is only honored by the faster-whisper runtime today — it's
- * accepted on the wire by the sherpa-onnx (ONNX) runtime but silently
- * has no effect on its output. See stt-server's
- * `support-vocabulary-in-sherpa-onnx` goal.
+ * `prompt` and `language` are both only honored by the faster-whisper
+ * runtime today — sherpa-onnx accepts neither field's real effect: `prompt`
+ * is silently dropped (see stt-server's `support-vocabulary-in-sherpa-onnx`
+ * goal) and sherpa-onnx's wire protocol has no per-request `language` field
+ * at all (language is fixed at model-load time there — see
+ * `setModelLanguage`, a separate reload operation, not this field) —
+ * callers should not send `language` for a sherpa-onnx-backed descriptor.
+ *
+ * `model`, unlike `prompt`/`language`, is honored by *both* runtimes as of
+ * concurrent-multi-provider-serving: each keeps every model it's been asked
+ * for warm and resident, and `model` picks which one serves this specific
+ * request — omitting it keeps today's exact behavior (whichever model the
+ * instance was launched with, or last switched to via `/v1/admin/model`).
  *
  * Batch-only: local streaming was removed (see `FasterWhisperProvider`'s
  * own doc comment / the 2026-09-05 decision) and no local runtime
@@ -167,12 +175,21 @@ export class LocalRuntimeProvider implements SttProvider {
 
   async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
     // Wire contract preserved from the App: multipart `file` (+ optional
-    // `prompt`), POST /v1/audio/transcriptions, response `{ text }`. No
-    // `model` field — a managed runtime serves the model it was launched with.
+    // `prompt`/`language`/`model`), POST /v1/audio/transcriptions, response
+    // `{ text }`. Omitting `model` still resolves to whatever model the
+    // runtime was launched with -- `model` is an override, not a
+    // requirement, so every existing caller that never set it keeps its
+    // exact behavior (see concurrent-multi-provider-serving).
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename ?? "recording.webm");
     if (request.prompt && request.prompt.trim()) {
       form.append("prompt", request.prompt.trim());
+    }
+    if (request.language && request.language.trim()) {
+      form.append("language", request.language.trim());
+    }
+    if (request.model && request.model.trim()) {
+      form.append("model", request.model.trim());
     }
 
     let res: Response;
