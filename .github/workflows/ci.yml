@@ -1,10 +1,10 @@
 name: CI
 
-# Push/PR guard, and — via workflow_dispatch — also the SDK's candidate role
-# (RELEASE_PROCESS.md gate 3): the package artifact is the npm registry
-# entry, so a validation run is all "candidate" means here. `permissions` is
-# pinned to contents:read so this workflow is structurally incapable of
-# npm's OIDC trusted publishing (id-token is never granted).
+# Push/PR guard, and — via workflow_dispatch — also the SDK's candidate role:
+# the package artifact is the npm registry entry, so a validation run is all
+# "candidate" means here. `permissions` is pinned to contents:read so this
+# workflow is structurally incapable of npm's OIDC trusted publishing
+# (id-token is never granted).
 
 on:
   push:
@@ -29,3 +29,20 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test
+
+      # On main (post-merge) assert the package version is ahead of what's
+      # published — the SDK's version guard, equivalent to the candidate
+      # workflows' in the binary repos. PRs don't need a bump per commit, so
+      # this only gates push-to-main.
+      - name: Version guard
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          src=$(node -p "require('./package.json').version")
+          pub=$(npm view @open-vibe-ai/stt-sdk version)
+          echo "package.json: ${src}   npm latest: ${pub}"
+          top=$(printf '%s\n%s\n' "${pub}" "${src}" | sort -V | tail -1)
+          if [ "${src}" = "${pub}" ] || [ "${top}" = "${pub}" ]; then
+            echo "::error::package.json version ${src} is not ahead of npm-published ${pub} — bump before the next release"
+            exit 1
+          fi
