@@ -50,3 +50,33 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --notes-file /tmp/release-notes.md
+
+      # Post-release housekeeping: bump to the next patch version on the
+      # integration branch (not main — that's where the next round of work
+      # continues from), so nobody has to remember to do it by hand before
+      # the next tag. Reads the CURRENT version on the branch straight from a
+      # fresh checkout (not the tagged commit), so it's correct even if work has
+      # already continued past the release.
+      - name: Bump to next version on the integration branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin voice-typer-windows
+          git checkout voice-typer-windows
+          git reset --hard origin/voice-typer-windows
+          current=$(node -p "require('./package.json').version")
+          IFS='.' read -r major minor patch <<< "$current"
+          next="${major}.${minor}.$((patch + 1))"
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            p.version = '${next}';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${next} (post-release)"
+          git push origin voice-typer-windows
+          echo "Bumped voice-typer-windows to ${next}."
