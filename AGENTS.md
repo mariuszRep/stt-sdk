@@ -77,15 +77,19 @@ carries `permissions: contents: read` only, so it is structurally incapable of n
 trusted publishing.
 
 ```
-push to voice-typer-windows ──▶ ci.yml runs on every push; a draft PR titled "vX.Y.Z"
-                                stays open (ensure-pr.yml opens one if none exists)
+push to voice-typer-windows ──▶ a draft PR titled "vX.Y.Z" stays open (ensure-pr.yml
+                                opens one if none exists) — build/test happens locally
+                                first (Verify Commands above); ci.yml is dispatch-only,
+                                it's also the on-demand cloud check: npm run uat -- stt-sdk
 merge PR ─────────────────────▶ main is now releasable; no candidate artifacts needed
 tag the tested SHA ───────────▶ release.yml builds + tests + `npm publish` via OIDC,
                                 then creates the GitHub release
 ```
 
-1. Push to `voice-typer-windows` — `ci.yml` is the standing guard. No version-ahead check
-   blocks a push/merge; it's fine to build/test the same version repeatedly.
+1. Push to `voice-typer-windows`, test locally, then `npm run uat -- stt-sdk` from
+   `voice-typer/` root when you want the cloud environment to confirm it too — `ci.yml`
+   doesn't run on its own. No version-ahead check blocks a push/merge; it's fine to
+   build/test the same version repeatedly.
 2. Merge the PR to `main`.
 3. On an explicit release instruction only:
    `git tag vX.Y.Z <tested-sha>` → `git push origin vX.Y.Z`.
