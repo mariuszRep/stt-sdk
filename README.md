@@ -94,10 +94,10 @@ provider info; `transcribe`/`createStream`/`listModels` throw
 
 ## Delivery decisions (2026-08-12)
 
-- **Package name / versioning**: `@open-vibe-ai/stt-sdk` v0.1.0, independently
-  versioned with semantic versioning. `0.x` is initial development; compatibility is
-  preserved within a major version per `CONVENTIONS.md`. Publishing to a registry
-  requires the `@voice-typer` npm org and publish credentials (not configured yet).
+- **Package name / versioning**: `@open-vibe-ai/stt-sdk`, independently
+  versioned with semantic versioning and published to npm from the tag-triggered
+  `release.yml` via OIDC trusted publishing (no npm token). `0.x` is initial development;
+  compatibility is preserved within a major version per `CONVENTIONS.md`.
 - **Cloud proof**: **Deepgram** is the first cloud adapter contract proof. It was
   chosen because the Voice Typer protocol already maps Deepgram semantics
   (`is_final` false/true → `partial`/`final`), it offers batch + streaming parallel
