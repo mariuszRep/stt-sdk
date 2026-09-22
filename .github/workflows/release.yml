@@ -29,7 +29,13 @@ jobs:
       # No NPM_TOKEN: authentication is via OIDC trusted publishing, configured
       # on npmjs.com for this exact repo + workflow filename (see stt-sdk's
       # README/CONVENTIONS for the one-time npmjs.com setup steps).
-      - run: npm publish
+      # --provenance is npm's own build-provenance attestation (same OIDC
+      # identity as trusted publishing, published to npm's transparency log)
+      # — the ecosystem-native equivalent of the actions/attest-build-provenance
+      # step stt-server/whisper-vibes use for their binaries; not the same
+      # mechanism, same guarantee: `npm view @open-vibe-ai/stt-sdk provenance`
+      # verifies it.
+      - run: npm publish --provenance
 
       - name: Create GitHub release
         env:
