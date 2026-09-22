@@ -1,15 +1,15 @@
 name: CI
 
-# Push/PR guard, and — via workflow_dispatch — also the SDK's candidate role:
-# the package artifact is the npm registry entry, so a validation run is all
-# "candidate" means here. `permissions` is pinned to contents:read so this
-# workflow is structurally incapable of npm's OIDC trusted publishing
+# workflow_dispatch-only — this IS the SDK's candidate role (npm run uat
+# targets this file): the package artifact is the npm registry entry, so a
+# validation run is all "candidate" means here. Deliberately not on push/PR
+# — build/test already happens locally before a push, and this is the
+# on-demand cloud-environment check for when you choose to run it, not an
+# automatic pass on every commit. `permissions` is pinned to contents:read so
+# this workflow is structurally incapable of npm's OIDC trusted publishing
 # (id-token is never granted).
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
