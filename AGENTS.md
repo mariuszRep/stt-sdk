@@ -84,15 +84,17 @@ tag the tested SHA ───────────▶ release.yml builds + tes
                                 then creates the GitHub release
 ```
 
-1. Push to `voice-typer-windows` — `ci.yml` is the standing guard.
-2. Bump `version` in `package.json` (ordinary commit on the branch) so it is greater than
-   `npm view @open-vibe-ai/stt-sdk version`.
-3. Merge the PR to `main`.
-4. On an explicit release instruction only:
+1. Push to `voice-typer-windows` — `ci.yml` is the standing guard. No version-ahead check
+   blocks a push/merge; it's fine to build/test the same version repeatedly.
+2. Merge the PR to `main`.
+3. On an explicit release instruction only:
    `git tag vX.Y.Z <tested-sha>` → `git push origin vX.Y.Z`.
    `release.yml` repacks from the tagged commit by design (npm OIDC trusted publishing) —
-   "promote not rebuild" here means the tag *is* the source.
-5. Rollback: `npm deprecate` the bad version, or tag a new version on a known-good commit —
+   "promote not rebuild" here means the tag *is* the source. `npm publish` itself refuses to
+   publish over an already-published version, so the real safety net is at this step, not
+   earlier ones. Right after, it auto-bumps the next patch version back onto
+   `voice-typer-windows` — rarely something to do by hand.
+4. Rollback: `npm deprecate` the bad version, or tag a new version on a known-good commit —
    publishing always repacks from whatever commit the tag names.
 
 ## Documentation Rule
