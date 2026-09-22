@@ -1,9 +1,19 @@
 name: CI
 
+# Push/PR guard, and — via workflow_dispatch — also the SDK's candidate role
+# (RELEASE_PROCESS.md gate 3): the package artifact is the npm registry
+# entry, so a validation run is all "candidate" means here. `permissions` is
+# pinned to contents:read so this workflow is structurally incapable of
+# npm's OIDC trusted publishing (id-token is never granted).
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
