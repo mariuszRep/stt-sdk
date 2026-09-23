@@ -73,9 +73,8 @@ npm run verify:consumer  # packs tarball, installs into a blank consumer fixture
 
 This repo ships a library, not binaries — there is deliberately **no** `candidate-*.yml`.
 `ci.yml` IS the UAT pipeline: it validates and packs the npm tarball that production later
-publishes unchanged. It
-carries `permissions: contents: read` only, so it is structurally incapable of npm's OIDC
-trusted publishing.
+publishes unchanged, storing it in a private draft GitHub Release rather than quota-backed
+Actions artifact storage. It has no npm OIDC permission, so it cannot publish to npm.
 
 ```
 push to voice-typer-windows ──▶ a draft PR titled "vX.Y.Z" stays open (ensure-pr.yml

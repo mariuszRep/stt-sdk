@@ -40,7 +40,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p candidate-package
-          gh run download "${{ steps.candidate.outputs.run_id }}" -n stt-sdk-package --dir candidate-package
+          gh release download "candidate-${{ github.sha }}" --dir candidate-package
           (cd candidate-package && sha256sum -c SHA256SUMS.txt)
 
       # No NPM_TOKEN: authentication is via OIDC trusted publishing, configured
@@ -73,6 +73,11 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --notes-file /tmp/release-notes.md
+
+      - name: Remove promoted private candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "candidate-${{ github.sha }}" --yes --cleanup-tag
 
       # Post-release housekeeping: bump to the next patch version on the
       # integration branch (not main — that's where the next round of work

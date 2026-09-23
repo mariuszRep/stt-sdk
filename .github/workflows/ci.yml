@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -43,12 +43,16 @@ jobs:
           mv "$tarball" candidate-package/
           (cd candidate-package && sha256sum *.tgz > SHA256SUMS.txt)
 
-      - name: Upload candidate package
-        uses: actions/upload-artifact@v4
-        with:
-          name: stt-sdk-package
-          path: candidate-package/
-          retention-days: 7
+      - name: Store private candidate package outside Actions artifact quota
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="candidate-${GITHUB_SHA}"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" --draft --target "$GITHUB_SHA" \
+            --title "UAT candidate ${GITHUB_SHA}" \
+            --notes "Private SDK UAT candidate from run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}." \
+            candidate-package/*
 
       # No "version ahead of npm-published" check here on purpose: most changes
       # have nothing to bump — it's fine to build/test the same version
