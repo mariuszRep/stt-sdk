@@ -37,5 +37,5 @@ jobs:
           version=$(jq -r .version package.json)
           gh pr create --draft --base main --head "${{ github.ref_name }}" \
             --title "v${version}" \
-            --body "Placeholder PR for the next release (${version}). ci.yml runs on every push to this branch. Merging to main marks the work release-ready — see AGENTS.md's build/test/release section."
+            --body "Placeholder PR for the next release (${version}). Build locally with npm run vt -- sdk dev; UAT is dispatch-only via npm run vt -- sdk uat. Merging does not build or publish anything."
           echo "Opened draft PR v${version}."

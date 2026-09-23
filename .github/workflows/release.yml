@@ -10,6 +10,7 @@ jobs:
     permissions:
       id-token: write
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +23,25 @@ jobs:
       # Node 22 may be older, so force an upgrade before install/publish.
       - run: npm install -g npm@latest
 
-      - run: npm ci
-      - run: npm run build
-      - run: npm run test
+      - name: Find the successful UAT run for this commit
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --workflow ci.yml --commit "${{ github.sha }}" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "${run_id}" ]; then
+            echo "::error::No successful SDK UAT run found for ${{ github.sha }}."
+            exit 1
+          fi
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify candidate package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p candidate-package
+          gh run download "${{ steps.candidate.outputs.run_id }}" -n stt-sdk-package --dir candidate-package
+          (cd candidate-package && sha256sum -c SHA256SUMS.txt)
 
       # No NPM_TOKEN: authentication is via OIDC trusted publishing, configured
       # on npmjs.com for this exact repo + workflow filename (see stt-sdk's
@@ -35,7 +52,7 @@ jobs:
       # step stt-server/whisper-vibes use for their binaries; not the same
       # mechanism, same guarantee: `npm view @open-vibe-ai/stt-sdk provenance`
       # verifies it.
-      - run: npm publish --provenance
+      - run: npm publish candidate-package/*.tgz --provenance
 
       - name: Create GitHub release
         env:

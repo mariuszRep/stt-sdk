@@ -71,8 +71,9 @@ npm run verify:consumer  # packs tarball, installs into a blank consumer fixture
 
 ## Build, test, release
 
-This repo ships a library, not binaries — there is deliberately **no** `candidate-*.yml`
-and no artifact promote step; do not add one. `ci.yml` IS the validation pipeline, and it
+This repo ships a library, not binaries — there is deliberately **no** `candidate-*.yml`.
+`ci.yml` IS the UAT pipeline: it validates and packs the npm tarball that production later
+publishes unchanged. It
 carries `permissions: contents: read` only, so it is structurally incapable of npm's OIDC
 trusted publishing.
 
@@ -80,26 +81,26 @@ trusted publishing.
 push to voice-typer-windows ──▶ a draft PR titled "vX.Y.Z" stays open (ensure-pr.yml
                                 opens one if none exists) — build/test happens locally
                                 first (Verify Commands above); ci.yml is dispatch-only,
-                                it's also the on-demand cloud check: npm run uat -- stt-sdk
-merge PR ─────────────────────▶ main is now releasable; no candidate artifacts needed
-tag the tested SHA ───────────▶ release.yml builds + tests + `npm publish` via OIDC,
-                                then creates the GitHub release
+                                it's also the on-demand cloud check: npm run vt -- sdk uat
+merge PR ─────────────────────▶ main is now releasable; nothing runs automatically
+tag the tested SHA ───────────▶ release.yml verifies/downloads the UAT tarball and publishes
+                                that exact package via OIDC, then creates the GitHub release
 ```
 
-1. Push to `voice-typer-windows`, test locally, then `npm run uat -- stt-sdk` from
+1. Push to `voice-typer-windows`, test locally, then `npm run vt -- sdk uat` from
    `voice-typer/` root when you want the cloud environment to confirm it too — `ci.yml`
    doesn't run on its own. No version-ahead check blocks a push/merge; it's fine to
    build/test the same version repeatedly.
 2. Merge the PR to `main`.
 3. On an explicit release instruction only:
    `git tag vX.Y.Z <tested-sha>` → `git push origin vX.Y.Z`.
-   `release.yml` repacks from the tagged commit by design (npm OIDC trusted publishing) —
-   "promote not rebuild" here means the tag *is* the source. `npm publish` itself refuses to
+   `release.yml` downloads and checksum-verifies the package from the successful UAT run;
+   it does not repack. `npm publish` itself refuses to
    publish over an already-published version, so the real safety net is at this step, not
    earlier ones. Right after, it auto-bumps the next patch version back onto
    `voice-typer-windows` — rarely something to do by hand.
-4. Rollback: `npm deprecate` the bad version, or tag a new version on a known-good commit —
-   publishing always repacks from whatever commit the tag names.
+4. Rollback: `npm deprecate` the bad version, or run a new UAT and tag a new version on a
+   known-good commit.
 
 ## Documentation Rule
 

@@ -29,9 +29,28 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test
+      - run: npm run verify:consumer
 
-      # No "version ahead of npm-published" check here on purpose: this job
-      # runs on every push to main, and most merges (CI/docs-only changes)
+      # UAT produces the exact npm tarball production will publish. The tag
+      # workflow downloads and checksum-verifies this artifact; it never
+      # rebuilds the package.
+      - name: Pack candidate package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-package
+          tarball=$(npm pack --json | jq -r '.[0].filename')
+          mv "$tarball" candidate-package/
+          (cd candidate-package && sha256sum *.tgz > SHA256SUMS.txt)
+
+      - name: Upload candidate package
+        uses: actions/upload-artifact@v4
+        with:
+          name: stt-sdk-package
+          path: candidate-package/
+          retention-days: 7
+
+      # No "version ahead of npm-published" check here on purpose: most changes
       # have nothing to bump — it's fine to build/test the same version
       # repeatedly. That check belongs at the moment a release actually goes
       # public: release.yml's `npm publish` will itself refuse to publish a
