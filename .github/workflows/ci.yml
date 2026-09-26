@@ -1,19 +1,19 @@
 name: CI
 
-# Push/PR guard, and — via workflow_dispatch — also the SDK's candidate role:
-# the package artifact is the npm registry entry, so a validation run is all
-# "candidate" means here. `permissions` is pinned to contents:read so this
-# workflow is structurally incapable of npm's OIDC trusted publishing
+# workflow_dispatch-only — this IS the SDK's candidate role (npm run uat
+# targets this file): the package artifact is the npm registry entry, so a
+# validation run is all "candidate" means here. Deliberately not on push/PR
+# — build/test already happens locally before a push, and this is the
+# on-demand cloud-environment check for when you choose to run it, not an
+# automatic pass on every commit. `permissions` is pinned to contents:read so
+# this workflow is structurally incapable of npm's OIDC trusted publishing
 # (id-token is never granted).
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -29,20 +29,33 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test
+      - run: npm run verify:consumer
 
-      # On main (post-merge) assert the package version is ahead of what's
-      # published — the SDK's version guard, equivalent to the candidate
-      # workflows' in the binary repos. PRs don't need a bump per commit, so
-      # this only gates push-to-main.
-      - name: Version guard
-        if: github.event_name == 'push'
+      # UAT produces the exact npm tarball production will publish. The tag
+      # workflow downloads and checksum-verifies this artifact; it never
+      # rebuilds the package.
+      - name: Pack candidate package
+        shell: bash
         run: |
           set -euo pipefail
-          src=$(node -p "require('./package.json').version")
-          pub=$(npm view @open-vibe-ai/stt-sdk version)
-          echo "package.json: ${src}   npm latest: ${pub}"
-          top=$(printf '%s\n%s\n' "${pub}" "${src}" | sort -V | tail -1)
-          if [ "${src}" = "${pub}" ] || [ "${top}" = "${pub}" ]; then
-            echo "::error::package.json version ${src} is not ahead of npm-published ${pub} — bump before the next release"
-            exit 1
-          fi
+          mkdir -p candidate-package
+          tarball=$(npm pack --json | jq -r '.[0].filename')
+          mv "$tarball" candidate-package/
+          (cd candidate-package && sha256sum *.tgz > SHA256SUMS.txt)
+
+      - name: Store private candidate package outside Actions artifact quota
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="candidate-${GITHUB_SHA}"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" --draft --target "$GITHUB_SHA" \
+            --title "UAT candidate ${GITHUB_SHA}" \
+            --notes "Private SDK UAT candidate from run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}." \
+            candidate-package/*
+
+      # No "version ahead of npm-published" check here on purpose: most changes
+      # have nothing to bump — it's fine to build/test the same version
+      # repeatedly. That check belongs at the moment a release actually goes
+      # public: release.yml's `npm publish` will itself refuse to publish a
+      # version that's already on the registry.

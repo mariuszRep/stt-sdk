@@ -10,6 +10,7 @@ jobs:
     permissions:
       id-token: write
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -22,14 +23,36 @@ jobs:
       # Node 22 may be older, so force an upgrade before install/publish.
       - run: npm install -g npm@latest
 
-      - run: npm ci
-      - run: npm run build
-      - run: npm run test
+      - name: Find the successful UAT run for this commit
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --workflow ci.yml --commit "${{ github.sha }}" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "${run_id}" ]; then
+            echo "::error::No successful SDK UAT run found for ${{ github.sha }}."
+            exit 1
+          fi
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify candidate package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p candidate-package
+          gh release download "candidate-${{ github.sha }}" --dir candidate-package
+          (cd candidate-package && sha256sum -c SHA256SUMS.txt)
 
       # No NPM_TOKEN: authentication is via OIDC trusted publishing, configured
       # on npmjs.com for this exact repo + workflow filename (see stt-sdk's
       # README/CONVENTIONS for the one-time npmjs.com setup steps).
-      - run: npm publish
+      # --provenance is npm's own build-provenance attestation (same OIDC
+      # identity as trusted publishing, published to npm's transparency log)
+      # — the ecosystem-native equivalent of the actions/attest-build-provenance
+      # step stt-server/whisper-vibes use for their binaries; not the same
+      # mechanism, same guarantee: `npm view @open-vibe-ai/stt-sdk provenance`
+      # verifies it.
+      - run: npm publish candidate-package/*.tgz --provenance
 
       - name: Create GitHub release
         env:
@@ -50,3 +73,38 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --notes-file /tmp/release-notes.md
+
+      - name: Remove promoted private candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "candidate-${{ github.sha }}" --yes --cleanup-tag
+
+      # Post-release housekeeping: bump to the next patch version on the
+      # integration branch (not main — that's where the next round of work
+      # continues from), so nobody has to remember to do it by hand before
+      # the next tag. Reads the CURRENT version on the branch straight from a
+      # fresh checkout (not the tagged commit), so it's correct even if work has
+      # already continued past the release.
+      - name: Bump to next version on the integration branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin voice-typer-windows
+          git checkout voice-typer-windows
+          git reset --hard origin/voice-typer-windows
+          current=$(node -p "require('./package.json').version")
+          IFS='.' read -r major minor patch <<< "$current"
+          next="${major}.${minor}.$((patch + 1))"
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            p.version = '${next}';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${next} (post-release)"
+          git push origin voice-typer-windows
+          echo "Bumped voice-typer-windows to ${next}."
