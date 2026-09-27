@@ -31,6 +31,11 @@ setup, not its transcription code.
 
 - **Finding the server.** Whether the app started the server itself or the user runs it on
   their own, the SDK can locate it and connect securely with its token.
+- **Local, shared, or remote.** The SDK finds the user's own server through its discovery record
+  (never assuming the default port), can detect a machine-wide server, and can connect to a
+  server at a given address with a token (local network or Tailscale). It reports the server's
+  version and API level and refuses clearly when the server is too old. It works with user-level
+  access for transcription and needs admin access only for model and setting changes.
 - **Same transcription call.** Apps keep calling transcription the way they do today. The SDK
   translates that into the new server's request and returns the same kind of result, with the
   extra details (language used, timing, diagnostics) available when the app wants them.
