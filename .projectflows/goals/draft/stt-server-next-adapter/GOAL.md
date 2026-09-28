@@ -1,67 +1,65 @@
 ---
 name: stt-server-next-adapter
-title: Connect the STT SDK to STT Server Next
-description: Give SDK users a way to talk to the new single-engine speech server, alongside the existing provider adapter, so apps can switch without rewriting their transcription code.
+title: Use STT Server Next Like Any Cloud Provider
+description: Add an stt-server-next provider to the SDK that behaves exactly like a cloud speech provider — connect with an address and token, list callable models, transcribe and translate — so apps switch without rewriting their transcription code.
 status: draft
 type: feature
 scope: stt-sdk only
 attempt: 0
 max_attempts: 8
 last_result: none
-next_action: Review with the user, then move to ready.
+next_action: Review with the user, then move to ready. Depends on stt-server-next goal openai-model-per-request.
 success_criteria:
-  - An app using the SDK can find a running stt-server-next, connect with its token, and transcribe audio through the same SDK transcription call it uses today.
-  - The SDK only sends options the selected model actually supports, so users never see errors caused by unsupported options.
-  - Apps can list, recommend, install, select, and remove models, and follow download progress, through the SDK.
+  - An app creates the provider from an address and a token, the same way it creates a cloud provider, and transcribes through the same SDK call it uses today.
+  - Listing models returns only the models the server can use right now, each with its capabilities and which one is the default.
+  - Each request can name the model to use; the SDK never selects, loads, downloads or removes models.
+  - The SDK only sends options the chosen model supports, so users never see errors caused by unsupported options.
   - Translation to English is available for models that support it.
+  - Failures come back as clear, structured errors, and a server that is too old is reported clearly.
   - The existing provider-based adapter keeps working unchanged until the app has switched.
 source: user
 ---
 
-# Connect the STT SDK to STT Server Next
+# Use STT Server Next Like Any Cloud Provider
 
 ## Why
 
-Voice Typer talks to its speech server through this SDK. The new server works differently: one
-server with one set of models instead of separate providers, each with its own connection
-details. The SDK needs a way to work with it so the app can switch over by changing its
-setup, not its transcription code.
+Voice Typer talks to its speech engines through this SDK, and the SDK treats every engine the
+same way: something you connect to and call. The new server is used exactly like a cloud
+provider such as OpenAI: models are simply available to call, and managing them is not the
+SDK's job.
 
 ## Business rules
 
-- **Finding the server.** Whether the app started the server itself or the user runs it on
-  their own, the SDK can locate it and connect securely with its token.
-- **Local, shared, or remote.** The SDK finds the user's own server through its discovery record
-  (never assuming the default port), can detect a machine-wide server, and can connect to a
-  server at a given address with a token (local network or Tailscale). It reports the server's
-  version and API level and refuses clearly when the server is too old. It works with user-level
-  access for transcription and needs admin access only for model and setting changes.
-- **Same transcription call.** Apps keep calling transcription the way they do today. The SDK
-  translates that into the new server's request and returns the same kind of result, with the
-  extra details (language used, timing, diagnostics) available when the app wants them.
-- **Never send what won't work.** Before sending a prompt, language, temperature, or timestamp
-  request, the SDK checks what the selected model supports and leaves out anything it doesn't.
-  The app's saved settings stay untouched; they simply apply again when a capable model is
-  selected. The prompt, including any vocabulary words, is built by the app and passed through
-  as-is.
-- **Models, not providers.** Apps work with a list of models: recommendations, installed
-  models, download progress, selection, and removal. There are no providers to start or stop.
-- **Translation.** Apps can ask for English text from speech in another language, where the
-  selected model supports it.
-- **Clear errors.** Failures come back as understandable, structured errors (server not ready,
-  model not installed, option unsupported, busy) so the app can explain them to the user.
-- **No disruption.** The existing adapter for the old server stays available and unchanged
-  until the app has fully switched and the old server is retired.
+- **Same as a cloud provider.** Connect with an address and a token (the app finds these; the SDK
+  does no discovery). No installing, downloading, progress, selecting, removing, refreshing, or
+  starting and stopping servers — exactly as with OpenAI.
+- **Models.** Listing returns the models that can be called now, with their capabilities
+  (prompt, language hint, translation, temperature, timestamps) and which one is the default.
+  Each request may name a model; with none, the server's default is used.
+- **Never send what won't work.** Before sending a prompt, language, temperature or timestamp
+  request, the SDK checks what the chosen model supports and leaves out anything it doesn't. The
+  app's saved settings stay untouched. The prompt, including vocabulary words, is built by the
+  app and passed through as-is.
+- **Translation.** Apps can ask for English text from speech in another language, where the chosen
+  model supports it.
+- **Clear errors.** Server not ready, model loading, model not installed, option unsupported, busy
+  (can retry) and admin access required come back as structured errors the app can explain.
+- **Version check.** The SDK reads the server's version and API level and refuses clearly when the
+  server is too old.
+- **No disruption.** The existing adapter for the old server stays available and unchanged until
+  the app has switched and the old server is retired.
 
 ## Out of scope
 
-App UI changes (whisper-vibes goal), server changes (stt-server-next goal), streaming.
+Model management and discovery (the app does these through the server's model manager), app UI,
+server changes, streaming.
 
 ## Related goals
 
-- Workspace: `voice-typer/.projectflows/goals/in_progress/migrate-voice-typer-to-stt-server-next`
-  (the server's client contract is described there and in `stt-server-next/docs/client-contract.md`).
-- `stt-server-next`: `draft/ready-for-voice-typer`.
+- Workspace: `voice-typer/.projectflows/goals/in_progress/migrate-voice-typer-to-stt-server-next`.
+- `stt-server-next`: `ready/openai-model-per-request` (the per-request model and `/v1/models`
+  this adapter uses) and `docs/client-contract.md`.
 - `whisper-vibes`: `draft/switch-to-stt-server-next`.
 
 ## Attempts
@@ -71,6 +69,8 @@ None yet.
 ## Verification Log
 
 2026-09-26: Drafted from the migration plan (phase 3).
+2026-09-28: Rewritten to the user's cloud-provider scope: the SDK lists callable models and
+transcribes/translates with a model per request; model management and discovery stay in the app.
 
 ## Final Outcome
 
