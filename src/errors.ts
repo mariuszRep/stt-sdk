@@ -73,3 +73,104 @@ export class ApiError extends SttError {
     this.name = "ApiError";
   }
 }
+
+/**
+ * Structured errors for `stt-server-next`, mapped from its JSON error
+ * envelope (`{"error":{"code","message","details"}}`) to stable SDK codes.
+ * See `SttServerNextProvider`'s error-mapping table for the full list; an
+ * unrecognized server `code` still surfaces here, verbatim, via
+ * {@link ServerError} rather than being swallowed.
+ */
+
+/** Base class for every structured error this provider raises from a parsed server response. */
+export class ServerError extends SttError {
+  readonly details?: unknown;
+  constructor(
+    message: string,
+    options: { code: string; retryable?: boolean; status?: number; cause?: unknown; details?: unknown },
+  ) {
+    super(message, {
+      code: options.code,
+      retryable: options.retryable ?? false,
+      status: options.status,
+      cause: options.cause,
+    });
+    this.name = "ServerError";
+    this.details = options.details;
+  }
+}
+
+/** `server_not_ready` — no default model configured and nothing loading. */
+export class ServerNotReadyError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "server_not_ready", retryable: false, ...options });
+    this.name = "ServerNotReadyError";
+  }
+}
+
+/** `model_loading` — retryable: the model is on its way, poll/retry. */
+export class ModelLoadingError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "model_loading", retryable: true, ...options });
+    this.name = "ModelLoadingError";
+  }
+}
+
+/** `model_not_installed` — the named model isn't downloaded or isn't a known id. */
+export class ModelNotInstalledError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "model_not_installed", retryable: false, ...options });
+    this.name = "ModelNotInstalledError";
+  }
+}
+
+/** `unsupported_capability` — the server rejected a field the model doesn't support. */
+export class ServerUnsupportedCapabilityError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "unsupported_capability", retryable: false, ...options });
+    this.name = "ServerUnsupportedCapabilityError";
+  }
+}
+
+/** `engine_busy` / `queue_full` — retryable: the server is saturated right now. */
+export class ServerBusyError extends ServerError {
+  constructor(message: string, options: { code?: "engine_busy" | "queue_full"; status?: number; details?: unknown } = {}) {
+    super(message, { code: options.code ?? "engine_busy", retryable: true, status: options.status, details: options.details });
+    this.name = "ServerBusyError";
+  }
+}
+
+/** `admin_required` — a valid user token was used on an admin-only route. */
+export class AdminRequiredError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "admin_required", retryable: false, ...options });
+    this.name = "AdminRequiredError";
+  }
+}
+
+/** `unauthorized` — missing or invalid bearer token. */
+export class UnauthorizedError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "unauthorized", retryable: false, ...options });
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** `network_not_private` — a non-loopback caller rejected under lan/tailscale mode. */
+export class NetworkNotPrivateError extends ServerError {
+  constructor(message: string, options: { status?: number; details?: unknown } = {}) {
+    super(message, { code: "network_not_private", retryable: false, ...options });
+    this.name = "NetworkNotPrivateError";
+  }
+}
+
+/** The server exists but fails the `service`/`api_level` version check. */
+export class ServerVersionError extends ServerError {
+  constructor(
+    message: string,
+    options: { code: "server_too_old" | "not_stt_server_next"; details?: unknown },
+  ) {
+    super(message, { code: options.code, retryable: false, details: options.details });
+    this.name = "ServerVersionError";
+  }
+}

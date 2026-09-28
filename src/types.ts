@@ -147,6 +147,28 @@ export interface ModelInfo {
   name?: string;
   language?: string;
   sizeBytes?: number;
+  /** True for the model a request with no `model` field resolves to (server-reported). */
+  isDefault?: boolean;
+  /** Per-model capability booleans, derived conservatively from a server's status matrix. */
+  capabilities?: ModelCapabilities;
+}
+
+/**
+ * Simple supported/not-supported booleans for optional per-request controls,
+ * derived from a server's richer status values (e.g. `"supported"` |
+ * `"unsupported"` | `"unknown"`). An `"unknown"` status is treated as *not*
+ * supported unless a specific server contract documents otherwise — the SDK
+ * never sends an optional field it cannot confirm the model accepts.
+ */
+export interface ModelCapabilities {
+  prompt?: boolean;
+  languageHint?: boolean;
+  translation?: boolean;
+  temperature?: boolean;
+  timestamps?: {
+    segment?: boolean;
+    word?: boolean;
+  };
 }
 
 // ── Batch transcription ──────────────────────────────────────────────────
@@ -161,6 +183,10 @@ export interface BatchTranscriptionRequest {
   language?: string;
   /** Provider model identifier, where the provider supports it. */
   model?: string;
+  /** Sampling temperature (0.0–1.0), where the chosen model supports it. */
+  temperature?: number;
+  /** Request word-level timestamps, where the chosen model supports it. */
+  wordTimestamps?: boolean;
   signal?: AbortSignal;
 }
 
@@ -181,7 +207,12 @@ export interface TranscriptionResult {
   language?: string;
   durationMs?: number;
   segments?: TranscriptionSegment[];
+  /** Raw server-side diagnostics (e.g. stt-server-next's `x_diagnostics`), passed through as-is. */
+  diagnostics?: Record<string, unknown>;
 }
+
+/** Optional request for translating speech in another language to English. */
+export interface BatchTranslationRequest extends BatchTranscriptionRequest {}
 
 // ── Streaming session ────────────────────────────────────────────────────
 

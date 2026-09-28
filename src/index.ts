@@ -24,7 +24,9 @@ export type {
   DescriptorAuth,
   RuntimeConnectionDescriptor,
   ModelInfo,
+  ModelCapabilities,
   BatchTranscriptionRequest,
+  BatchTranslationRequest,
   TranscriptionSegment,
   TranscriptionResult,
   SessionState,
@@ -37,6 +39,16 @@ export {
   ConnectionError,
   ProtocolError,
   ApiError,
+  ServerError,
+  ServerNotReadyError,
+  ModelLoadingError,
+  ModelNotInstalledError,
+  ServerUnsupportedCapabilityError,
+  ServerBusyError,
+  AdminRequiredError,
+  UnauthorizedError,
+  NetworkNotPrivateError,
+  ServerVersionError,
 } from "./errors";
 export type { SttErrorOptions } from "./errors";
 
@@ -50,6 +62,7 @@ export {
   WhisperCppProvider,
   OpenAIProvider,
   GroqProvider,
+  SttServerNextProvider,
 } from "./providers";
 export type {
   LocalRuntimeOptions,
@@ -58,4 +71,5 @@ export type {
   WhisperCppOptions,
   OpenAIProviderOptions,
   GroqProviderOptions,
+  SttServerNextProviderOptions,
 } from "./providers";
