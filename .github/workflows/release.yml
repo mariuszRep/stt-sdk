@@ -77,7 +77,10 @@ jobs:
       - name: Remove promoted private candidate
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release delete "candidate-${{ github.sha }}" --yes --cleanup-tag
+        continue-on-error: true
+        run: |
+          gh release delete "candidate-${{ github.sha }}" --yes || true
+          gh api -X DELETE "repos/${{ github.repository }}/git/refs/tags/candidate-${{ github.sha }}" || true
 
       # Post-release housekeeping: bump to the next patch version on the
       # integration branch (not main — that's where the next round of work
