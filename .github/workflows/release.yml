@@ -52,7 +52,7 @@ jobs:
       # step stt-server/whisper-vibes use for their binaries; not the same
       # mechanism, same guarantee: `npm view @open-vibe-ai/stt-sdk provenance`
       # verifies it.
-      - run: npm publish candidate-package/*.tgz --provenance
+      - run: npm publish ./candidate-package/*.tgz --provenance
 
       - name: Create GitHub release
         env:
