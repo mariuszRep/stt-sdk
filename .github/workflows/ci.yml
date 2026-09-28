@@ -39,7 +39,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p candidate-package
-          tarball=$(npm pack --json | jq -r '.[0].filename')
+          npm pack --json --ignore-scripts > pack.json
+          tarball=$(jq -r '.[0].filename' pack.json)
           mv "$tarball" candidate-package/
           (cd candidate-package && sha256sum *.tgz > SHA256SUMS.txt)
 
