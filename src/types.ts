@@ -146,6 +146,8 @@ export interface ModelInfo {
   id: string;
   name?: string;
   language?: string;
+  /** Language codes this model supports, where the provider reports them. */
+  languages?: string[];
   sizeBytes?: number;
   /** True for the model a request with no `model` field resolves to (server-reported). */
   isDefault?: boolean;
@@ -163,6 +165,8 @@ export interface ModelInfo {
 export interface ModelCapabilities {
   prompt?: boolean;
   languageHint?: boolean;
+  /** Whether this model can auto-detect the spoken language. */
+  languageDetect?: boolean;
   translation?: boolean;
   temperature?: boolean;
   timestamps?: {

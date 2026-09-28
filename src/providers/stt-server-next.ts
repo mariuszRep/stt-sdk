@@ -44,12 +44,28 @@ interface ControlCapability {
   status?: "supported" | "unsupported" | "unknown" | string;
 }
 
+/**
+ * `language_hint`'s extra fields (client-contract.md §4.1): the live
+ * `EffectiveCaps` view flattens its per-control extras (here, `languages`)
+ * directly onto the control object; the catalog (unloaded) view instead
+ * reports its static claim under `model_claim`. Some server versions may
+ * nest either under an `extra` object, so both shapes are accepted.
+ */
+interface LanguageHintCapability extends ControlCapability {
+  languages?: string[];
+  model_claim?: string[];
+  extra?: { languages?: string[]; model_claim?: string[] };
+}
+
 interface ServerModelEntry {
   id: string;
   object?: string;
   owned_by?: string;
   default?: boolean;
-  capabilities?: Record<string, ControlCapability>;
+  capabilities?: Record<string, ControlCapability> & { language_hint?: LanguageHintCapability };
+  /** Top-level convenience fields added in stt-server-next 0.1.1. */
+  languages?: string[];
+  language_detect?: boolean;
 }
 
 interface ServerModelsList {
@@ -111,11 +127,14 @@ interface ServerTranscriptionResponse {
  * server's live view replaces `"unknown"` with a verified answer, and this
  * mapping picks that up automatically on the next `listModels`/cache refresh.
  */
-function deriveCapabilities(raw: Record<string, ControlCapability> | undefined): ModelCapabilities {
+function deriveCapabilities(
+  raw: (Record<string, ControlCapability> & { language_hint?: LanguageHintCapability }) | undefined,
+): ModelCapabilities {
   const supported = (control?: ControlCapability): boolean => control?.status === "supported";
   return {
     prompt: supported(raw?.prompt),
     languageHint: supported(raw?.language_hint),
+    languageDetect: supported(raw?.language_detect),
     translation: supported(raw?.translation),
     temperature: supported(raw?.temperature),
     timestamps: {
@@ -127,12 +146,30 @@ function deriveCapabilities(raw: Record<string, ControlCapability> | undefined):
   };
 }
 
+/**
+ * The model's supported language codes: prefers the top-level `languages`
+ * field (stt-server-next 0.1.1+), falling back to `capabilities.language_hint`'s
+ * live `languages` or catalog `model_claim` (see {@link LanguageHintCapability}).
+ */
+function deriveLanguages(entry: ServerModelEntry): string[] | undefined {
+  if (Array.isArray(entry.languages)) return entry.languages;
+  const hint = entry.capabilities?.language_hint;
+  return hint?.languages ?? hint?.extra?.languages ?? hint?.model_claim ?? hint?.extra?.model_claim;
+}
+
 function mapModelEntry(entry: ServerModelEntry): ModelInfo {
+  const capabilities = deriveCapabilities(entry.capabilities);
+  // Prefer the top-level `language_detect` field (0.1.1+) over the derived
+  // capability, which only reflects a `"supported"` status.
+  if (typeof entry.language_detect === "boolean") {
+    capabilities.languageDetect = entry.language_detect;
+  }
   return {
     id: entry.id,
     name: entry.id,
+    languages: deriveLanguages(entry),
     isDefault: entry.default === true,
-    capabilities: deriveCapabilities(entry.capabilities),
+    capabilities,
   };
 }
 

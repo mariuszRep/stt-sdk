@@ -150,6 +150,7 @@ describe("SttServerNextProvider — listModels mapping", () => {
     expect(tiny.capabilities).toEqual({
       prompt: true,
       languageHint: true,
+      languageDetect: false,
       translation: true,
       temperature: true,
       timestamps: { segment: true, word: true },
@@ -161,10 +162,81 @@ describe("SttServerNextProvider — listModels mapping", () => {
     expect(plain.capabilities).toEqual({
       prompt: false,
       languageHint: false,
+      languageDetect: false,
       translation: false,
       temperature: false,
       timestamps: { segment: false, word: false },
     });
+  });
+
+  it("prefers top-level languages/language_detect fields (0.1.1+)", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () =>
+        jsonResponse({
+          object: "list",
+          data: [
+            {
+              id: "whisper-tiny",
+              object: "model",
+              owned_by: "local",
+              default: true,
+              languages: ["en", "es"],
+              language_detect: true,
+              capabilities: {
+                language_hint: { status: "supported", languages: ["en"] },
+                language_detect: { status: "unsupported" },
+              },
+            },
+          ],
+        }),
+    });
+    const models = await provider.listModels();
+    const tiny = models.find((m) => m.id === "whisper-tiny")!;
+    expect(tiny.languages).toEqual(["en", "es"]);
+    // Top-level language_detect wins over the (contradictory) capability status.
+    expect(tiny.capabilities?.languageDetect).toBe(true);
+  });
+
+  it("falls back to capabilities.language_hint.extra.languages/model_claim and language_detect status", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () =>
+        jsonResponse({
+          object: "list",
+          data: [
+            {
+              id: "live-model",
+              object: "model",
+              owned_by: "local",
+              default: false,
+              capabilities: {
+                language_hint: { status: "supported", extra: { languages: ["en", "no"] } },
+                language_detect: { status: "supported" },
+              },
+            },
+            {
+              id: "catalog-model",
+              object: "model",
+              owned_by: "local",
+              default: false,
+              capabilities: {
+                language_hint: { status: "unknown", model_claim: ["en", "fr"] },
+                language_detect: { status: "unknown" },
+              },
+            },
+          ],
+        }),
+    });
+    const models = await provider.listModels();
+
+    const live = models.find((m) => m.id === "live-model")!;
+    expect(live.languages).toEqual(["en", "no"]);
+    expect(live.capabilities?.languageDetect).toBe(true);
+
+    const catalog = models.find((m) => m.id === "catalog-model")!;
+    expect(catalog.languages).toEqual(["en", "fr"]);
+    expect(catalog.capabilities?.languageDetect).toBe(false);
   });
 });
 
