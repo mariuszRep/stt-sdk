@@ -59,6 +59,8 @@ interface LanguageHintCapability extends ControlCapability {
 
 interface ServerModelEntry {
   id: string;
+  /** Friendly display name (catalog name, custom_name, or derived); added in a later server version. */
+  name?: string;
   object?: string;
   owned_by?: string;
   default?: boolean;
@@ -166,7 +168,9 @@ function mapModelEntry(entry: ServerModelEntry): ModelInfo {
   }
   return {
     id: entry.id,
-    name: entry.id,
+    // Prefer the server's friendly `name` field; fall back to `id` only when
+    // the server has no name for this entry (defensive for older servers).
+    name: entry.name?.trim() ? entry.name : entry.id,
     languages: deriveLanguages(entry),
     isDefault: entry.default === true,
     capabilities,

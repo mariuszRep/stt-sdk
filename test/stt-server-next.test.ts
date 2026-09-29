@@ -238,6 +238,47 @@ describe("SttServerNextProvider — listModels mapping", () => {
     expect(catalog.languages).toEqual(["en", "fr"]);
     expect(catalog.capabilities?.languageDetect).toBe(false);
   });
+
+  it("maps the server's name field through when present", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () =>
+        jsonResponse({
+          object: "list",
+          data: [
+            {
+              id: "whisper-tiny",
+              object: "model",
+              owned_by: "local",
+              default: true,
+              name: "Whisper Tiny (fast)",
+            },
+          ],
+        }),
+    });
+    const models = await provider.listModels();
+    const tiny = models.find((m) => m.id === "whisper-tiny")!;
+    expect(tiny.name).toBe("Whisper Tiny (fast)");
+  });
+
+  it("falls back to id as name when the server omits or blanks name", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () =>
+        jsonResponse({
+          object: "list",
+          data: [
+            { id: "no-name-model", object: "model", owned_by: "local", default: false },
+            { id: "blank-name-model", object: "model", owned_by: "local", default: false, name: "" },
+            { id: "whitespace-name-model", object: "model", owned_by: "local", default: false, name: "   " },
+          ],
+        }),
+    });
+    const models = await provider.listModels();
+    expect(models.find((m) => m.id === "no-name-model")!.name).toBe("no-name-model");
+    expect(models.find((m) => m.id === "blank-name-model")!.name).toBe("blank-name-model");
+    expect(models.find((m) => m.id === "whitespace-name-model")!.name).toBe("whitespace-name-model");
+  });
 });
 
 describe("SttServerNextProvider — transcribe", () => {
