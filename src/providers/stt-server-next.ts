@@ -38,7 +38,10 @@ export interface SttServerNextProviderOptions extends TransportDeps {
 
 /** Minimum `api_level` (see `/health`) this adapter requires. */
 const MIN_API_LEVEL = 1;
-const EXPECTED_SERVICE = "stt-server-next";
+// The server was called stt-server-next before 0.3.0; from 0.3.0 it is "stt-server".
+// Both names are the same product, so either passes the identity check.
+const EXPECTED_SERVICES = ["stt-server", "stt-server-next"];
+const EXPECTED_SERVICE = EXPECTED_SERVICES[0];
 
 interface ControlCapability {
   status?: "supported" | "unsupported" | "unknown" | string;
@@ -236,7 +239,7 @@ export class SttServerNextProvider implements SttProvider {
         code: "not_stt_server_next",
       });
     }
-    if (body.service !== EXPECTED_SERVICE) {
+    if (!EXPECTED_SERVICES.includes(body.service ?? "")) {
       throw new ServerVersionError(
         `Expected service "${EXPECTED_SERVICE}", got "${body.service ?? "unknown"}".`,
         { code: "not_stt_server_next", details: body },

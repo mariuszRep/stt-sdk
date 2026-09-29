@@ -116,6 +116,15 @@ describe("SttServerNextProvider — version check", () => {
     expect(err.code).toBe("not_stt_server_next");
   });
 
+  it("accepts the renamed service (stt-server 0.3.0+)", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse({ status: "ok", service: "stt-server", api_level: 1 }),
+      "/v1/models": () => jsonResponse(MODELS_RESPONSE),
+    });
+    const models = await provider.listModels();
+    expect(models).toHaveLength(2);
+  });
+
   it("throws ServerVersionError(server_too_old) for an insufficient api_level", async () => {
     const provider = makeProvider({
       "/health": () => jsonResponse({ status: "ok", service: "stt-server-next", api_level: 0 }),
