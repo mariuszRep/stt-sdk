@@ -55,6 +55,46 @@ const session = await provider.createStream({
 });
 ```
 
+### stt-server-next — used exactly like a cloud provider
+
+```ts
+import { SttServerNextProvider } from "@open-vibe-ai/stt-sdk";
+
+const provider = new SttServerNextProvider({
+  baseUrl: "http://127.0.0.1:54321", // app discovers this; the SDK does no discovery
+  token: authToken,                  // from <data-dir>/auth.token or user.token
+});
+
+const models = await provider.listModels(); // callable models only, each with capabilities + isDefault
+
+const result = await provider.transcribe({
+  file,
+  filename: "recording.wav",
+  model: "whisper-tiny",   // omit to use the server's default model
+  prompt: "vocabulary hint",
+  language: "en",
+  temperature: 0.2,
+  wordTimestamps: true,
+});
+
+// Translation to English, where the chosen model supports it:
+const translated = await provider.translate({ file, model: "whisper-tiny" });
+```
+
+`SttServerNextProvider` connects with an address and a token like a cloud provider —
+no discovery, install, model management, or server lifecycle. It checks `GET /health`
+on first use and refuses clearly if the server isn't `stt-server-next` or its
+`api_level` is too old. Before sending `prompt`/`language`/`temperature`/timestamp
+fields, it checks the chosen model's capabilities (from `GET /v1/models`, cached and
+refreshed on a stale-capability error) and omits anything the model doesn't support —
+an `"unknown"` capability status is treated the same as unsupported. Server errors are
+mapped to a stable `code`/`retryable` hierarchy (`ServerNotReadyError`,
+`ModelLoadingError` (retryable), `ModelNotInstalledError`,
+`ServerUnsupportedCapabilityError`, `ServerBusyError` (retryable),
+`AdminRequiredError`, `UnauthorizedError`, `NetworkNotPrivateError`,
+`ServerVersionError`); an unrecognized server error code still surfaces with its
+original `code` rather than being swallowed.
+
 ### From a server-issued runtime descriptor
 
 ```ts
@@ -87,6 +127,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
+| `SttServerNextProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw

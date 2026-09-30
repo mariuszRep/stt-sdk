@@ -1,5 +1,6 @@
 import type {
   BatchTranscriptionRequest,
+  BatchTranslationRequest,
   ModelInfo,
   ProviderCapability,
   StreamConfig,
@@ -17,4 +18,10 @@ export interface SttProvider {
   listModels(): Promise<ModelInfo[]>;
   transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult>;
   createStream(config: StreamConfig): Promise<StreamSession>;
+  /**
+   * Translate speech in another language to English, where the provider and
+   * chosen model support it. Optional so providers without translation
+   * support are unaffected.
+   */
+  translate?(request: BatchTranslationRequest): Promise<TranscriptionResult>;
 }

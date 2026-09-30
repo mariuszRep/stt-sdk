@@ -7,3 +7,7 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Root mini CLI (scripts/uat.mjs) — local candidate downloads + state
+candidate-download/
+.last-candidate.json

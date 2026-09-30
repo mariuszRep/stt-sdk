@@ -10,3 +10,5 @@ export { OpenAIProvider } from "./openai";
 export type { OpenAIProviderOptions } from "./openai";
 export { GroqProvider } from "./groq";
 export type { GroqProviderOptions } from "./groq";
+export { SttServerNextProvider } from "./stt-server-next";
+export type { SttServerNextProviderOptions } from "./stt-server-next";
