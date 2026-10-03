@@ -62,7 +62,7 @@ export {
   WhisperCppProvider,
   OpenAIProvider,
   GroqProvider,
-  SttServerNextProvider,
+  SttServerProvider,
 } from "./providers";
 export type {
   LocalRuntimeOptions,
@@ -71,5 +71,5 @@ export type {
   WhisperCppOptions,
   OpenAIProviderOptions,
   GroqProviderOptions,
-  SttServerNextProviderOptions,
+  SttServerProviderOptions,
 } from "./providers";

@@ -1,6 +1,6 @@
 {
   "name": "@open-vibe-ai/stt-sdk",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Voice Typer provider-communication library: one normalized interface for local runtime endpoints and cloud STT APIs.",
   "keywords": [
     "speech-to-text",

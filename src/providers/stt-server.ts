@@ -29,8 +29,8 @@ import {
   UnsupportedCapabilityError,
 } from "../errors";
 
-export interface SttServerNextProviderOptions extends TransportDeps {
-  /** Base URL of the stt-server-next instance, e.g. `http://127.0.0.1:54321`. */
+export interface SttServerProviderOptions extends TransportDeps {
+  /** Base URL of the stt-server instance, e.g. `http://127.0.0.1:54321`. */
   baseUrl: string;
   /** Bearer token (admin or user token — see the server's client contract, section 3). */
   token: string;
@@ -38,10 +38,7 @@ export interface SttServerNextProviderOptions extends TransportDeps {
 
 /** Minimum `api_level` (see `/health`) this adapter requires. */
 const MIN_API_LEVEL = 1;
-// The server was called stt-server-next before 0.3.0; from 0.3.0 it is "stt-server".
-// Both names are the same product, so either passes the identity check.
-const EXPECTED_SERVICES = ["stt-server", "stt-server-next"];
-const EXPECTED_SERVICE = EXPECTED_SERVICES[0];
+const EXPECTED_SERVICE = "stt-server";
 
 interface ControlCapability {
   status?: "supported" | "unsupported" | "unknown" | string;
@@ -68,7 +65,7 @@ interface ServerModelEntry {
   owned_by?: string;
   default?: boolean;
   capabilities?: Record<string, ControlCapability> & { language_hint?: LanguageHintCapability };
-  /** Top-level convenience fields added in stt-server-next 0.1.1. */
+  /** Top-level convenience fields added in stt-server 0.1.1. */
   languages?: string[];
   language_detect?: boolean;
 }
@@ -120,7 +117,7 @@ interface ServerTranscriptionResponse {
 
 /**
  * Derives the SDK's simple supported/not-supported {@link ModelCapabilities}
- * booleans from stt-server-next's richer per-control status values
+ * booleans from stt-server's richer per-control status values
  * (`"supported" | "unsupported" | "unknown"`, see client-contract.md §4.1).
  *
  * Rule: a control counts as supported only when the server explicitly says
@@ -153,7 +150,7 @@ function deriveCapabilities(
 
 /**
  * The model's supported language codes: prefers the top-level `languages`
- * field (stt-server-next 0.1.1+), falling back to `capabilities.language_hint`'s
+ * field (stt-server 0.1.1+), falling back to `capabilities.language_hint`'s
  * live `languages` or catalog `model_claim` (see {@link LanguageHintCapability}).
  */
 function deriveLanguages(entry: ServerModelEntry): string[] | undefined {
@@ -180,9 +177,9 @@ function mapModelEntry(entry: ServerModelEntry): ModelInfo {
   };
 }
 
-const SERVER_NEXT_CAPABILITY: ProviderCapability = {
-  id: "stt-server-next",
-  displayName: "STT Server Next",
+const STT_SERVER_CAPABILITY: ProviderCapability = {
+  id: "stt-server",
+  displayName: "STT Server",
   transport: "http",
   requiresAudioInput: true,
   privacy: "local",
@@ -195,14 +192,14 @@ const SERVER_NEXT_CAPABILITY: ProviderCapability = {
 };
 
 /**
- * Adapter for `stt-server-next`, used exactly like a cloud provider: connect
+ * Adapter for `stt-server`, used exactly like a cloud provider: connect
  * with a base URL and a token, list callable models, transcribe/translate
  * naming a model per request. No model management, discovery, install, or
  * server lifecycle — that stays the app's job via the server's own APIs.
  */
-export class SttServerNextProvider implements SttProvider {
-  readonly id = "stt-server-next";
-  readonly capability: ProviderCapability = SERVER_NEXT_CAPABILITY;
+export class SttServerProvider implements SttProvider {
+  readonly id = "stt-server";
+  readonly capability: ProviderCapability = STT_SERVER_CAPABILITY;
 
   private readonly baseUrl: string;
   private readonly token: string;
@@ -211,7 +208,7 @@ export class SttServerNextProvider implements SttProvider {
   private versionChecked = false;
   private modelsCache: Map<string, ModelInfo> | null = null;
 
-  constructor(options: SttServerNextProviderOptions) {
+  constructor(options: SttServerProviderOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.token = options.token;
     this.fetchImpl = resolveFetch(options);
@@ -223,32 +220,32 @@ export class SttServerNextProvider implements SttProvider {
     try {
       res = await this.fetchImpl(`${this.baseUrl}/health`, { method: "GET" });
     } catch (err) {
-      throw new ConnectionError("Failed to reach stt-server-next /health.", { cause: err });
+      throw new ConnectionError("Failed to reach stt-server /health.", { cause: err });
     }
     if (!res.ok) {
       throw new ServerVersionError(
-        `stt-server-next /health returned HTTP ${res.status}.`,
-        { code: "not_stt_server_next" },
+        `stt-server /health returned HTTP ${res.status}.`,
+        { code: "not_stt_server" },
       );
     }
     let body: ServerHealth;
     try {
       body = (await res.json()) as ServerHealth;
     } catch (err) {
-      throw new ServerVersionError("stt-server-next /health did not return JSON.", {
-        code: "not_stt_server_next",
+      throw new ServerVersionError("stt-server /health did not return JSON.", {
+        code: "not_stt_server",
       });
     }
-    if (!EXPECTED_SERVICES.includes(body.service ?? "")) {
+    if (body.service !== EXPECTED_SERVICE) {
       throw new ServerVersionError(
         `Expected service "${EXPECTED_SERVICE}", got "${body.service ?? "unknown"}".`,
-        { code: "not_stt_server_next", details: body },
+        { code: "not_stt_server", details: body },
       );
     }
     const apiLevel = body.api_level ?? 0;
     if (apiLevel < MIN_API_LEVEL) {
       throw new ServerVersionError(
-        `stt-server-next api_level ${apiLevel} is older than the minimum required (${MIN_API_LEVEL}).`,
+        `stt-server api_level ${apiLevel} is older than the minimum required (${MIN_API_LEVEL}).`,
         { code: "server_too_old", details: body },
       );
     }
@@ -272,7 +269,7 @@ export class SttServerNextProvider implements SttProvider {
   private async toServerError(res: Response): Promise<ServerError> {
     const error = await this.parseErrorBody(res);
     const code = error?.code ?? "api_error";
-    const message = error?.message ?? `stt-server-next returned HTTP ${res.status}.`;
+    const message = error?.message ?? `stt-server returned HTTP ${res.status}.`;
     const details = error?.details;
 
     switch (code) {
@@ -313,7 +310,7 @@ export class SttServerNextProvider implements SttProvider {
         headers: this.authHeaders(),
       });
     } catch (err) {
-      throw new ConnectionError("Failed to reach stt-server-next /v1/models.", { cause: err });
+      throw new ConnectionError("Failed to reach stt-server /v1/models.", { cause: err });
     }
     if (!res.ok) throw await this.toServerError(res);
     const body = (await res.json()) as ServerModelsList;
@@ -405,7 +402,7 @@ export class SttServerNextProvider implements SttProvider {
           signal: request.signal,
         });
       } catch (err) {
-        throw new ConnectionError(`Failed to reach stt-server-next ${path}.`, { cause: err });
+        throw new ConnectionError(`Failed to reach stt-server ${path}.`, { cause: err });
       }
     };
 
@@ -437,7 +434,7 @@ export class SttServerNextProvider implements SttProvider {
 
   async createStream(_config: StreamConfig): Promise<StreamSession> {
     throw new UnsupportedCapabilityError(
-      "SttServerNextProvider does not support streaming (out of scope for this adapter).",
+      "SttServerProvider does not support streaming (out of scope for this adapter).",
     );
   }
 }

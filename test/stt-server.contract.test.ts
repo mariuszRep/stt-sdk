@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { SttServerNextProvider } from "../src/providers/stt-server-next";
+import { SttServerProvider } from "../src/providers/stt-server";
 import { ModelNotInstalledError } from "../src/errors";
 
 /**
- * Optional contract test against a REAL stt-server-next instance. Skipped
+ * Optional contract test against a REAL stt-server instance. Skipped
  * unless both STT_NEXT_URL and STT_NEXT_TOKEN are set — see this repo's
- * goal for the manual harness (spawn stt-server-next, download+default a
+ * goal for the manual harness (spawn stt-server, download+default a
  * model, read its token, run this test, then stop the server).
  */
 const url = process.env.STT_NEXT_URL;
@@ -48,11 +48,11 @@ function makeTinyWav(): Uint8Array {
   return new Uint8Array(buffer);
 }
 
-runIf("SttServerNextProvider — real server contract test", () => {
+runIf("SttServerProvider — real server contract test", () => {
   // describe.skip still executes this body at collection time (only the
   // `it`s inside are skipped), so fall back to harmless placeholders when
   // the env vars are absent — no request is ever made in that case.
-  const provider = new SttServerNextProvider({ baseUrl: url ?? "http://127.0.0.1:1", token: token ?? "" });
+  const provider = new SttServerProvider({ baseUrl: url ?? "http://127.0.0.1:1", token: token ?? "" });
 
   it("lists callable models with a default", async () => {
     const models = await provider.listModels();

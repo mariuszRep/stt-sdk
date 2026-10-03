@@ -55,12 +55,12 @@ const session = await provider.createStream({
 });
 ```
 
-### stt-server-next — used exactly like a cloud provider
+### stt-server — used exactly like a cloud provider
 
 ```ts
-import { SttServerNextProvider } from "@open-vibe-ai/stt-sdk";
+import { SttServerProvider } from "@open-vibe-ai/stt-sdk";
 
-const provider = new SttServerNextProvider({
+const provider = new SttServerProvider({
   baseUrl: "http://127.0.0.1:54321", // app discovers this; the SDK does no discovery
   token: authToken,                  // from <data-dir>/auth.token or user.token
 });
@@ -81,9 +81,9 @@ const result = await provider.transcribe({
 const translated = await provider.translate({ file, model: "whisper-tiny" });
 ```
 
-`SttServerNextProvider` connects with an address and a token like a cloud provider —
+`SttServerProvider` connects with an address and a token like a cloud provider —
 no discovery, install, model management, or server lifecycle. It checks `GET /health`
-on first use and refuses clearly if the server isn't `stt-server-next` or its
+on first use and refuses clearly if the server isn't `stt-server` or its
 `api_level` is too old. Before sending `prompt`/`language`/`temperature`/timestamp
 fields, it checks the chosen model's capabilities (from `GET /v1/models`, cached and
 refreshed on a stale-capability error) and omits anything the model doesn't support —
@@ -127,7 +127,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerNextProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw
@@ -174,6 +174,23 @@ npm test
 npm run build
 npm run verify:consumer   # pack + install into a blank consumer fixture + typecheck
 ```
+
+## Migrating from 0.3.x (`stt-server-next` renamed to `stt-server`)
+
+0.3.5 is a breaking rename; there is no deprecated alias. The server formerly called
+`stt-server-next` is now `stt-server` (releases v0.3.0+).
+
+| 0.3.4 and earlier | 0.3.5 |
+|---|---|
+| `SttServerNextProvider` | `SttServerProvider` |
+| `SttServerNextProviderOptions` | `SttServerProviderOptions` |
+| provider id / capability id `"stt-server-next"` | `"stt-server"` |
+| capability `displayName` `"STT Server Next"` | `"STT Server"` |
+| `ServerVersionError` code `"not_stt_server_next"` | `"not_stt_server"` |
+
+Consumers that persisted the provider id (settings, history) must migrate
+`"stt-server-next"` to `"stt-server"`. `/health` must now report `service: "stt-server"`;
+servers older than 0.3.0 that report `stt-server-next` are rejected with `not_stt_server`.
 
 ## Reconcile note
 

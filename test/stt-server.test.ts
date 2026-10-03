@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { SttServerNextProvider } from "../src/providers/stt-server-next";
+import { SttServerProvider } from "../src/providers/stt-server";
 import {
   AdminRequiredError,
   ConnectionError,
@@ -16,7 +16,7 @@ import {
 
 const HEALTH_OK = {
   status: "ok",
-  service: "stt-server-next",
+  service: "stt-server",
   version: "0.1.0",
   api_level: 1,
 };
@@ -85,14 +85,14 @@ function mockFetch(
 }
 
 function makeProvider(routes: Record<string, () => Response>, captures: Capture[] = []) {
-  return new SttServerNextProvider({
+  return new SttServerProvider({
     baseUrl: "http://127.0.0.1:54321",
     token: "test-token",
     fetchImpl: mockFetch(captures, routes),
   });
 }
 
-describe("SttServerNextProvider — version check", () => {
+describe("SttServerProvider — version check", () => {
   it("passes with a matching service and sufficient api_level", async () => {
     const captures: Capture[] = [];
     const provider = makeProvider(
@@ -107,27 +107,18 @@ describe("SttServerNextProvider — version check", () => {
     expect(captures[0]!.url).toBe("http://127.0.0.1:54321/health");
   });
 
-  it("throws ServerVersionError(not_stt_server_next) for a wrong service", async () => {
+  it("throws ServerVersionError(not_stt_server) for a wrong service", async () => {
     const provider = makeProvider({
       "/health": () => jsonResponse({ status: "ok", service: "something-else", api_level: 1 }),
     });
     const err = await provider.listModels().catch((e) => e);
     expect(err).toBeInstanceOf(ServerVersionError);
-    expect(err.code).toBe("not_stt_server_next");
-  });
-
-  it("accepts the renamed service (stt-server 0.3.0+)", async () => {
-    const provider = makeProvider({
-      "/health": () => jsonResponse({ status: "ok", service: "stt-server", api_level: 1 }),
-      "/v1/models": () => jsonResponse(MODELS_RESPONSE),
-    });
-    const models = await provider.listModels();
-    expect(models).toHaveLength(2);
+    expect(err.code).toBe("not_stt_server");
   });
 
   it("throws ServerVersionError(server_too_old) for an insufficient api_level", async () => {
     const provider = makeProvider({
-      "/health": () => jsonResponse({ status: "ok", service: "stt-server-next", api_level: 0 }),
+      "/health": () => jsonResponse({ status: "ok", service: "stt-server", api_level: 0 }),
     });
     const err = await provider.listModels().catch((e) => e);
     expect(err).toBeInstanceOf(ServerVersionError);
@@ -135,7 +126,7 @@ describe("SttServerNextProvider — version check", () => {
   });
 
   it("wraps a network failure on /health as ConnectionError", async () => {
-    const provider = new SttServerNextProvider({
+    const provider = new SttServerProvider({
       baseUrl: "http://127.0.0.1:54321",
       token: "test-token",
       fetchImpl: vi.fn(async () => {
@@ -146,7 +137,7 @@ describe("SttServerNextProvider — version check", () => {
   });
 });
 
-describe("SttServerNextProvider — listModels mapping", () => {
+describe("SttServerProvider — listModels mapping", () => {
   it("maps default flag and derives conservative capability booleans", async () => {
     const provider = makeProvider({
       "/health": () => jsonResponse(HEALTH_OK),
@@ -290,7 +281,7 @@ describe("SttServerNextProvider — listModels mapping", () => {
   });
 });
 
-describe("SttServerNextProvider — transcribe", () => {
+describe("SttServerProvider — transcribe", () => {
   it("sends model, prompt, language, temperature and word timestamps when supported", async () => {
     const captures: Capture[] = [];
     const provider = makeProvider(
@@ -414,7 +405,7 @@ describe("SttServerNextProvider — transcribe", () => {
   });
 });
 
-describe("SttServerNextProvider — translate", () => {
+describe("SttServerProvider — translate", () => {
   it("posts to /v1/audio/translations when the model supports translation", async () => {
     const captures: Capture[] = [];
     const provider = makeProvider(
@@ -443,7 +434,7 @@ describe("SttServerNextProvider — translate", () => {
   });
 });
 
-describe("SttServerNextProvider — error mapping", () => {
+describe("SttServerProvider — error mapping", () => {
   const cases: Array<{
     code: string;
     status: number;

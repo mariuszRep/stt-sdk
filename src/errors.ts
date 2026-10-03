@@ -75,9 +75,9 @@ export class ApiError extends SttError {
 }
 
 /**
- * Structured errors for `stt-server-next`, mapped from its JSON error
+ * Structured errors for `stt-server`, mapped from its JSON error
  * envelope (`{"error":{"code","message","details"}}`) to stable SDK codes.
- * See `SttServerNextProvider`'s error-mapping table for the full list; an
+ * See `SttServerProvider`'s error-mapping table for the full list; an
  * unrecognized server `code` still surfaces here, verbatim, via
  * {@link ServerError} rather than being swallowed.
  */
@@ -168,7 +168,7 @@ export class NetworkNotPrivateError extends ServerError {
 export class ServerVersionError extends ServerError {
   constructor(
     message: string,
-    options: { code: "server_too_old" | "not_stt_server_next"; details?: unknown },
+    options: { code: "server_too_old" | "not_stt_server"; details?: unknown },
   ) {
     super(message, { code: options.code, retryable: false, details: options.details });
     this.name = "ServerVersionError";
