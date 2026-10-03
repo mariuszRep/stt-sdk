@@ -177,10 +177,10 @@ npm run verify:consumer   # pack + install into a blank consumer fixture + typec
 
 ## Migrating from 0.3.x (`stt-server-next` renamed to `stt-server`)
 
-0.4.0 is a breaking rename; there is no deprecated alias. The server formerly called
+0.3.5 is a breaking rename; there is no deprecated alias. The server formerly called
 `stt-server-next` is now `stt-server` (releases v0.3.0+).
 
-| 0.3.x | 0.4.0 |
+| 0.3.4 and earlier | 0.3.5 |
 |---|---|
 | `SttServerNextProvider` | `SttServerProvider` |
 | `SttServerNextProviderOptions` | `SttServerProviderOptions` |
