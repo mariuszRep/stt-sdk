@@ -211,7 +211,7 @@ export interface TranscriptionResult {
   language?: string;
   durationMs?: number;
   segments?: TranscriptionSegment[];
-  /** Raw server-side diagnostics (e.g. stt-server-next's `x_diagnostics`), passed through as-is. */
+  /** Raw server-side diagnostics (e.g. stt-server's `x_diagnostics`), passed through as-is. */
   diagnostics?: Record<string, unknown>;
 }
 
