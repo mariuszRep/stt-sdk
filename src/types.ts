@@ -41,6 +41,11 @@ export interface PartialEvent {
   text: string;
   startMs: number;
   endMs: number;
+  /** stt-server's live streaming: `text` is `committed` (final, append-only) followed by `tentative` (may still change). */
+  committed?: string;
+  tentative?: string;
+  /** Counts up with every change of `committed` or `tentative`. */
+  revision?: number;
 }
 
 export interface FinalEvent {
@@ -168,6 +173,8 @@ export interface ModelCapabilities {
   /** Whether this model can auto-detect the spoken language. */
   languageDetect?: boolean;
   translation?: boolean;
+  /** Whether this model can transcribe live audio through `createStream`. */
+  streaming?: boolean;
   temperature?: boolean;
   timestamps?: {
     segment?: boolean;

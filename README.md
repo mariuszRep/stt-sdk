@@ -95,6 +95,16 @@ mapped to a stable `code`/`retryable` hierarchy (`ServerNotReadyError`,
 `ServerVersionError`); an unrecognized server error code still surfaces with its
 original `code` rather than being swallowed.
 
+Live transcription: a model whose `ModelInfo.capabilities.streaming` is `true` can be
+streamed with `provider.createStream({ model, language, encoding: "pcm_s16le", sampleRate: 16000, channels: 1 })`,
+over the server's `WS /v1/realtime?intent=transcription`. `sendAudio()` takes PCM16 mono;
+`partial` events carry `committed` (final, append-only) and `tentative` (may still change)
+text plus a `revision`; `stop()` commits and resolves after the `final` event. A model
+that does not stream rejects with `UnsupportedCapabilityError` — fall back to `transcribe()`.
+The server runs one stream at a time and cannot transcribe a batch with the streaming
+model meanwhile. A browser `WebSocket` cannot send the bearer header, so a webview passes
+`webSocketFactory`; Node needs nothing.
+
 ### From a server-issued runtime descriptor
 
 ```ts
@@ -127,7 +137,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw

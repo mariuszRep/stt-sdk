@@ -152,6 +152,7 @@ describe("SttServerProvider — listModels mapping", () => {
       languageHint: true,
       languageDetect: false,
       translation: true,
+      streaming: false,
       temperature: true,
       timestamps: { segment: true, word: true },
     });
@@ -164,6 +165,7 @@ describe("SttServerProvider — listModels mapping", () => {
       languageHint: false,
       languageDetect: false,
       translation: false,
+      streaming: false,
       temperature: false,
       timestamps: { segment: false, word: false },
     });

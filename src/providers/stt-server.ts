@@ -12,7 +12,8 @@ import type {
   TranscriptWord,
 } from "../types";
 import type { TransportDeps } from "../transport";
-import { resolveFetch, toBlob } from "../transport";
+import { resolveFetch, resolveWebSocket, toBlob } from "../transport";
+import { SttServerStreamSession, type WebSocketFactory } from "./stt-server-stream";
 import {
   AdminRequiredError,
   ApiError,
@@ -34,6 +35,11 @@ export interface SttServerProviderOptions extends TransportDeps {
   baseUrl: string;
   /** Bearer token (admin or user token — see the server's client contract, section 3). */
   token: string;
+  /**
+   * How the live socket is opened (`createStream`). The default passes the bearer header to the platform's
+   * `WebSocket` (Node); a browser or webview cannot set it and supplies a factory of its own.
+   */
+  webSocketFactory?: WebSocketFactory;
 }
 
 /** Minimum `api_level` (see `/health`) this adapter requires. */
@@ -138,6 +144,7 @@ function deriveCapabilities(
     languageHint: supported(raw?.language_hint),
     languageDetect: supported(raw?.language_detect),
     translation: supported(raw?.translation),
+    streaming: supported(raw?.streaming),
     temperature: supported(raw?.temperature),
     timestamps: {
       // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
@@ -183,10 +190,12 @@ const STT_SERVER_CAPABILITY: ProviderCapability = {
   transport: "http",
   requiresAudioInput: true,
   privacy: "local",
-  supportsPartials: false,
+  // Live transcription exists for the models whose `capabilities.streaming` is supported (`ModelInfo`); the
+  // provider itself can open the stream for them.
+  supportsPartials: true,
   supportsWordTimestamps: true,
   supportsLanguageHint: true,
-  supportsStreaming: false,
+  supportsStreaming: true,
   supportsBatch: true,
   available: true,
 };
@@ -204,6 +213,7 @@ export class SttServerProvider implements SttProvider {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly openSocket: WebSocketFactory;
 
   private versionChecked = false;
   private modelsCache: Map<string, ModelInfo> | null = null;
@@ -212,6 +222,7 @@ export class SttServerProvider implements SttProvider {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.token = options.token;
     this.fetchImpl = resolveFetch(options);
+    this.openSocket = options.webSocketFactory ?? defaultSocketFactory(resolveWebSocket(options));
   }
 
   private async ensureVersion(): Promise<void> {
@@ -432,11 +443,37 @@ export class SttServerProvider implements SttProvider {
     return this.postAudio("/v1/audio/translations", request, true);
   }
 
-  async createStream(_config: StreamConfig): Promise<StreamSession> {
-    throw new UnsupportedCapabilityError(
-      "SttServerProvider does not support streaming (out of scope for this adapter).",
+  /**
+   * Live transcription of `config.model` (`default` = the server's default) over `/v1/realtime`. Only models whose
+   * `ModelInfo.capabilities.streaming` is true can stream; the audio is 16-bit PCM mono at `config.sampleRate`.
+   * Rejects with {@link UnsupportedCapabilityError} otherwise, so the caller falls back to {@link transcribe}.
+   * The server runs one stream at a time and cannot transcribe a batch with the streaming model meanwhile.
+   */
+  async createStream(config: StreamConfig): Promise<StreamSession> {
+    if (config.encoding !== "pcm_s16le" || config.channels !== 1) {
+      throw new UnsupportedCapabilityError("stt-server live transcription takes 16-bit mono PCM (pcm_s16le, 1 channel).");
+    }
+    await this.ensureVersion();
+    const model = config.model?.trim() || "default";
+    const caps = await this.resolveModelCapabilities(model);
+    if (!caps?.streaming) {
+      throw new UnsupportedCapabilityError(`Model "${model}" does not support live transcription.`);
+    }
+    const url = new URL("/v1/realtime", this.baseUrl.replace(/^http/, "ws"));
+    url.searchParams.set("intent", "transcription");
+    url.searchParams.set("model", model);
+    const session = new SttServerStreamSession(
+      { url: url.toString(), token: this.token, openSocket: this.openSocket, connectTimeoutMs: 5000, stopTimeoutMs: 10000 },
+      config,
     );
+    await session.start();
+    return session;
   }
+}
+
+/** The bearer header goes where the platform lets a socket carry one (Node); a browser connects without it. */
+function defaultSocketFactory(WS: typeof WebSocket): WebSocketFactory {
+  return (url, headers) => ("document" in globalThis ? new WS(url) : new WS(url, { headers } as never));
 }
 
 function mapWord(word: ServerTranscriptionWord): TranscriptWord {
