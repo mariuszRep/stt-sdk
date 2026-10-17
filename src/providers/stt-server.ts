@@ -5,6 +5,8 @@ import type {
   ModelCapabilities,
   ModelInfo,
   ProviderCapability,
+  SpeechDetectionOptions,
+  SpeechDetectionResult,
   StreamConfig,
   StreamSession,
   TranscriptionResult,
@@ -123,6 +125,13 @@ interface ServerTranscriptionResponse {
   duration?: number;
   segments?: ServerTranscriptionSegment[];
   x_diagnostics?: Record<string, unknown>;
+}
+
+interface ServerSpeechDetectionResponse {
+  duration: number;
+  speech_seconds: number;
+  speech_ratio: number;
+  segments: Array<{ start: number; end: number }>;
 }
 
 /**
@@ -436,6 +445,46 @@ export class SttServerProvider implements SttProvider {
     return form;
   }
 
+  /**
+   * POSTs the form `build` makes to `path` and returns the parsed JSON body. When the server answers with a code that
+   * says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
+   */
+  private async postForm(
+    path: string,
+    build: () => FormData,
+    signal: AbortSignal | undefined,
+    refresh?: () => Promise<void>,
+  ): Promise<unknown> {
+    const attempt = async (): Promise<Response> => {
+      const form = build();
+      try {
+        return await this.fetchImpl(`${this.baseUrl}${path}`, {
+          method: "POST",
+          headers: this.authHeaders(),
+          body: form,
+          signal,
+        });
+      } catch (err) {
+        throw new ConnectionError(`Failed to reach stt-server ${path}.`, { cause: err });
+      }
+    };
+
+    let res = await attempt();
+    if (!res.ok && refresh) {
+      const error = await this.parseErrorBody(res.clone());
+      const staleCacheCodes = new Set(["model_not_installed", "unsupported_capability"]);
+      if (error?.code && staleCacheCodes.has(error.code)) {
+        // Refresh capabilities cache and retry once — the model list may
+        // have changed underneath us (newly installed/verified, or the
+        // live capability view replaced a stale "unknown").
+        await refresh();
+        res = await attempt();
+      }
+    }
+    if (!res.ok) throw await this.toServerError(res);
+    return res.json();
+  }
+
   /** `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. */
   private async postAudio(
     path: string,
@@ -449,36 +498,15 @@ export class SttServerProvider implements SttProvider {
       assertCanTranslate(request.model ?? "default", caps, translation.targetLanguage, request.language);
     }
 
-    const attempt = async (): Promise<Response> => {
-      const form = this.buildForm(request, caps, translation?.targetLanguage);
-      try {
-        return await this.fetchImpl(`${this.baseUrl}${path}`, {
-          method: "POST",
-          headers: this.authHeaders(),
-          body: form,
-          signal: request.signal,
-        });
-      } catch (err) {
-        throw new ConnectionError(`Failed to reach stt-server ${path}.`, { cause: err });
-      }
-    };
-
-    let res = await attempt();
-    if (!res.ok) {
-      const error = await this.parseErrorBody(res.clone());
-      const staleCacheCodes = new Set(["model_not_installed", "unsupported_capability"]);
-      if (error?.code && staleCacheCodes.has(error.code)) {
-        // Refresh capabilities cache and retry once — the model list may
-        // have changed underneath us (newly installed/verified, or the
-        // live capability view replaced a stale "unknown").
+    const body = await this.postForm(
+      path,
+      () => this.buildForm(request, caps, translation?.targetLanguage),
+      request.signal,
+      async () => {
         caps = (await this.getModelsCache(true)).get(request.model ?? "")?.capabilities ?? caps;
-        res = await attempt();
-      }
-    }
-    if (!res.ok) throw await this.toServerError(res);
-
-    const body = (await res.json()) as ServerTranscriptionResponse;
-    return mapTranscriptionResponse(body);
+      },
+    );
+    return mapTranscriptionResponse(body as ServerTranscriptionResponse);
   }
 
   async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
@@ -489,6 +517,38 @@ export class SttServerProvider implements SttProvider {
     return this.postAudio("/v1/audio/translations", request, {
       targetLanguage: request.targetLanguage?.trim() || "en",
     });
+  }
+
+  /**
+   * Finds the speech in a finished recording (`POST /v1/audio/vad`, an stt-server extension): Silero VAD runs in the
+   * server, needs no loaded model and never waits behind a transcription. `audio` must be a WAV file, as for
+   * {@link transcribe}. Live voice-activity detection stays in the client; this is for audio that already exists.
+   * An stt-server older than this endpoint answers 404, which surfaces as a {@link ServerError}.
+   */
+  async detectSpeech(
+    audio: Blob | ArrayBuffer | Uint8Array,
+    options: SpeechDetectionOptions = {},
+  ): Promise<SpeechDetectionResult> {
+    await this.ensureVersion();
+    const body = (await this.postForm(
+      "/v1/audio/vad",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        const settings = {
+          threshold: options.threshold,
+          min_speech_ms: options.minSpeechMs,
+          min_silence_ms: options.minSilenceMs,
+          speech_pad_ms: options.speechPadMs,
+        };
+        for (const [name, value] of Object.entries(settings)) {
+          if (value !== undefined) form.append(name, String(value));
+        }
+        return form;
+      },
+      options.signal,
+    )) as ServerSpeechDetectionResponse;
+    return { segments: body.segments, speechRatio: body.speech_ratio, duration: body.duration };
   }
 
   /**

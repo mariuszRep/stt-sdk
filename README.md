@@ -84,6 +84,14 @@ const translated = await provider.translate({ file, model: "whisper-tiny" });
 const german = await provider.translate({ file, model: "canary", targetLanguage: "de" });
 ```
 
+Where speech is in a finished recording (Silero VAD running in the server, no model needed; an stt-server extension,
+WAV audio; live detection stays in the client):
+
+```ts
+const { segments, speechRatio, duration } = await provider.detectSpeech(file, { threshold: 0.5, minSpeechMs: 250 });
+// segments: [{ start: 0.26, end: 2.94 }, ...] in seconds
+```
+
 A model's `capabilities.translationTargets` lists the languages it translates into; a translating model that does
 not report a list translates into English only. `translate()` and `createStream({ targetLanguage })` reject with
 `UnsupportedCapabilityError` for a target the model does not offer.
@@ -146,7 +154,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw

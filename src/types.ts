@@ -243,6 +243,36 @@ export interface BatchTranslationRequest extends BatchTranscriptionRequest {
   targetLanguage?: string;
 }
 
+// ── Offline speech detection ─────────────────────────────────────────────
+
+/** Settings for {@link SttServerProvider.detectSpeech}; anything left out takes the server's default. */
+export interface SpeechDetectionOptions {
+  filename?: string;
+  /** Speech probability from which a frame counts as speech, 0.05–0.95 (server default 0.5). */
+  threshold?: number;
+  /** Segments shorter than this are dropped (server default 250). */
+  minSpeechMs?: number;
+  /** A pause shorter than this does not split a segment (server default 100). */
+  minSilenceMs?: number;
+  /** Padding added to both ends of every segment (server default 30). */
+  speechPadMs?: number;
+  signal?: AbortSignal;
+}
+
+/** A stretch of speech, in seconds from the start of the audio. */
+export interface SpeechSegment {
+  start: number;
+  end: number;
+}
+
+export interface SpeechDetectionResult {
+  segments: SpeechSegment[];
+  /** The share of the audio inside segments, 0–1. */
+  speechRatio: number;
+  /** Length of the audio in seconds. */
+  duration: number;
+}
+
 // ── Streaming session ────────────────────────────────────────────────────
 
 export type SessionState = "idle" | "starting" | "active" | "stopping" | "closed";

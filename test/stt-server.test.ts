@@ -7,6 +7,7 @@ import {
   ModelNotInstalledError,
   NetworkNotPrivateError,
   ServerBusyError,
+  ServerError,
   ServerNotReadyError,
   ServerUnsupportedCapabilityError,
   ServerVersionError,
@@ -584,5 +585,115 @@ describe("SttServerProvider — error mapping", () => {
       .catch((e) => e);
     expect(err.code).toBe("some_future_code");
     expect(err.retryable).toBe(false);
+  });
+});
+
+describe("SttServerProvider — detectSpeech", () => {
+  const VAD_RESPONSE = {
+    duration: 6.165,
+    speech_seconds: 5.048,
+    speech_ratio: 0.8188,
+    segments: [
+      { start: 0.258, end: 2.942 },
+      { start: 3.074, end: 5.438 },
+    ],
+  };
+
+  it("posts the audio to /v1/audio/vad with the bearer token and maps the response", async () => {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/audio/vad": () => jsonResponse(VAD_RESPONSE),
+      },
+      captures,
+    );
+
+    const result = await provider.detectSpeech(new Uint8Array([1, 2, 3]));
+
+    expect(result).toEqual({
+      segments: [
+        { start: 0.258, end: 2.942 },
+        { start: 3.074, end: 5.438 },
+      ],
+      speechRatio: 0.8188,
+      duration: 6.165,
+    });
+    const call = captures.find((c) => c.url.endsWith("/v1/audio/vad"))!;
+    expect(call.init!.method).toBe("POST");
+    expect((call.init!.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    const form = call.init!.body as FormData;
+    expect((form.get("file") as File).name).toBe("recording.wav");
+    // No model is involved, so the model list is never fetched; unset options are not sent.
+    expect(captures.some((c) => c.url.endsWith("/v1/models"))).toBe(false);
+    for (const field of ["threshold", "min_speech_ms", "min_silence_ms", "speech_pad_ms"]) {
+      expect(form.has(field)).toBe(false);
+    }
+  });
+
+  it("sends the options it is given", async () => {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/audio/vad": () => jsonResponse({ ...VAD_RESPONSE, segments: [] }),
+      },
+      captures,
+    );
+
+    const result = await provider.detectSpeech(new Blob(["x"]), {
+      filename: "clip.wav",
+      threshold: 0.6,
+      minSpeechMs: 300,
+      minSilenceMs: 150,
+      speechPadMs: 40,
+    });
+
+    expect(result.segments).toEqual([]);
+    const form = captures.find((c) => c.url.endsWith("/v1/audio/vad"))!.init!.body as FormData;
+    expect((form.get("file") as File).name).toBe("clip.wav");
+    expect(form.get("threshold")).toBe("0.6");
+    expect(form.get("min_speech_ms")).toBe("300");
+    expect(form.get("min_silence_ms")).toBe("150");
+    expect(form.get("speech_pad_ms")).toBe("40");
+  });
+
+  it("passes the server's invalid_request_error through with its code and status", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/vad": () =>
+        jsonResponse(
+          { error: { code: "invalid_request_error", message: "threshold must be between 0.05 and 0.95" } },
+          400,
+        ),
+    });
+
+    const err = await provider.detectSpeech(new Uint8Array([1]), { threshold: 2 }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(ServerError);
+    expect(err.code).toBe("invalid_request_error");
+    expect(err.status).toBe(400);
+  });
+
+  it("maps an unauthorized answer to UnauthorizedError", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/vad": () => jsonResponse({ error: { code: "unauthorized", message: "no" } }, 401),
+    });
+
+    await expect(provider.detectSpeech(new Uint8Array([1]))).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it("wraps a network failure as ConnectionError", async () => {
+    const provider = new SttServerProvider({
+      baseUrl: "http://127.0.0.1:54321",
+      token: "test-token",
+      fetchImpl: vi.fn(async (input: FetchInput) => {
+        if (String(input).endsWith("/health")) return jsonResponse(HEALTH_OK);
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch,
+    });
+
+    await expect(provider.detectSpeech(new Uint8Array([1]))).rejects.toBeInstanceOf(ConnectionError);
   });
 });
