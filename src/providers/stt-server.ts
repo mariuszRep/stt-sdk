@@ -48,6 +48,8 @@ const EXPECTED_SERVICE = "stt-server";
 
 interface ControlCapability {
   status?: "supported" | "unsupported" | "unknown" | string;
+  /** What the catalog claims for the model, before the loaded engine has confirmed it (an `"unknown"` status). */
+  model_claim?: unknown;
 }
 
 /**
@@ -144,7 +146,7 @@ function deriveCapabilities(
     languageHint: supported(raw?.language_hint),
     languageDetect: supported(raw?.language_detect),
     translation: supported(raw?.translation),
-    streaming: supported(raw?.streaming),
+    streaming: canStream(raw?.streaming),
     temperature: supported(raw?.temperature),
     timestamps: {
       // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
@@ -153,6 +155,16 @@ function deriveCapabilities(
       word: supported(raw?.word_timestamps),
     },
   };
+}
+
+/**
+ * Whether a model can transcribe live. Unlike the other controls, an unconfirmed (`"unknown"`) status counts when the
+ * catalog claims streaming: nothing is sent that a model could reject, and a model that cannot stream is refused with
+ * `streaming_unsupported` when the stream opens, which the caller answers by transcribing in batch. Waiting for the
+ * engine to confirm would make the first recording after a start always batch.
+ */
+function canStream(control?: ControlCapability): boolean {
+  return control?.status === "supported" || (control?.status === "unknown" && control.model_claim === true);
 }
 
 /**

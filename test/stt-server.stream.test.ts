@@ -11,6 +11,8 @@ const MODELS = {
   data: [
     { id: "parakeet-unified", default: true, capabilities: { streaming: { status: "supported" }, prompt: { status: "unsupported" } } },
     { id: "whisper-tiny", capabilities: { streaming: { status: "unsupported" } } },
+    { id: "unconfirmed", capabilities: { streaming: { status: "unknown", model_claim: true, reason: "unverified" } } },
+    { id: "unconfirmed-batch-only", capabilities: { streaming: { status: "unknown", model_claim: false } } },
   ],
 };
 
@@ -70,6 +72,13 @@ describe("SttServerProvider live streaming", () => {
     expect(models.find((m) => m.id === "parakeet-unified")!.capabilities!.streaming).toBe(true);
     expect(models.find((m) => m.id === "whisper-tiny")!.capabilities!.streaming).toBe(false);
     expect(provider.capability.supportsStreaming).toBe(true);
+  });
+
+  it("counts a streaming model the engine has not confirmed yet when the catalog claims it", async () => {
+    const { provider } = mockServer();
+    const models = await provider.listModels();
+    expect(models.find((m) => m.id === "unconfirmed")!.capabilities!.streaming).toBe(true);
+    expect(models.find((m) => m.id === "unconfirmed-batch-only")!.capabilities!.streaming).toBe(false);
   });
 
   it("connects to /v1/realtime?intent=transcription with the bearer token and 16 kHz pcm16 settings", async () => {
