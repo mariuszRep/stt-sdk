@@ -13,6 +13,10 @@ const MODELS = {
     { id: "whisper-tiny", capabilities: { streaming: { status: "unsupported" } } },
     { id: "unconfirmed", capabilities: { streaming: { status: "unknown", model_claim: true, reason: "unverified" } } },
     { id: "unconfirmed-batch-only", capabilities: { streaming: { status: "unknown", model_claim: false } } },
+    {
+      id: "whisper-translate",
+      capabilities: { streaming: { status: "unsupported" }, translation: { status: "supported", target_languages: ["en", "de"] } },
+    },
   ],
 };
 
@@ -105,6 +109,43 @@ describe("SttServerProvider live streaming", () => {
     const { provider, sockets } = mockServer();
     const error = await provider.createStream({ ...CONFIG, model: "whisper-tiny" }).catch((e) => e);
     expect(error).toBeInstanceOf(UnsupportedCapabilityError);
+    expect(sockets).toHaveLength(0);
+  });
+
+  it("translates on a model that cannot stream, sending the target language with the session settings", async () => {
+    const server = mockServer();
+    const opened = server.provider.createStream({ ...CONFIG, model: "whisper-translate", targetLanguage: " de " });
+    await vi.waitFor(() => expect(server.sockets).toHaveLength(1));
+    const socket = server.sockets[0]!;
+    await vi.waitFor(() => expect(socket.received).toHaveLength(1));
+    expect(socket.received[0]!.session.input_audio_transcription).toEqual({
+      model: "whisper-translate",
+      target_language: "de",
+    });
+    server.accept(socket.ws);
+    const session = await opened;
+    const events: TranscriptEvent[] = [];
+    session.onEvent = (e) => events.push(e);
+
+    // The whole turn arrives at once after the commit, as the buffered turn path sends it.
+    session.sendAudio(new Uint8Array(3200));
+    const stopped = session.stop();
+    expect(socket.received.at(-1)).toEqual({ type: "input_audio_buffer.commit" });
+    server.say(socket.ws, { type: "conversation.item.input_audio_transcription.completed", item_id: "item_1", transcript: "Hallo Welt" });
+    await stopped;
+    expect(events.filter((e) => e.type === "final")).toMatchObject([{ text: "Hallo Welt" }]);
+  });
+
+  it("refuses a translation the model cannot do, before any socket opens", async () => {
+    const { provider, sockets } = mockServer();
+    // A target the model does not offer, a model that does not translate at all, and one that streams but cannot translate.
+    for (const config of [
+      { ...CONFIG, model: "whisper-translate", targetLanguage: "fr" },
+      { ...CONFIG, model: "whisper-tiny", targetLanguage: "en" },
+      { ...CONFIG, model: "parakeet-unified", targetLanguage: "en" },
+    ]) {
+      expect(await provider.createStream(config).catch((e) => e)).toBeInstanceOf(UnsupportedCapabilityError);
+    }
     expect(sockets).toHaveLength(0);
   });
 

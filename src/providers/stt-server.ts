@@ -50,6 +50,8 @@ interface ControlCapability {
   status?: "supported" | "unsupported" | "unknown" | string;
   /** What the catalog claims for the model, before the loaded engine has confirmed it (an `"unknown"` status). */
   model_claim?: unknown;
+  /** `translation` only: the languages the model translates into; `null` when it translates but does not say. */
+  target_languages?: string[] | null;
 }
 
 /**
@@ -141,11 +143,14 @@ function deriveCapabilities(
   raw: (Record<string, ControlCapability> & { language_hint?: LanguageHintCapability }) | undefined,
 ): ModelCapabilities {
   const supported = (control?: ControlCapability): boolean => control?.status === "supported";
+  const translationTargets = supported(raw?.translation) ? raw?.translation?.target_languages : undefined;
   return {
     prompt: supported(raw?.prompt),
     languageHint: supported(raw?.language_hint),
     languageDetect: supported(raw?.language_detect),
     translation: supported(raw?.translation),
+    // Only a non-empty list is a real answer: `null` is "not advertised" (English only) and `[]` is "none".
+    ...(translationTargets?.length ? { translationTargets } : {}),
     streaming: canStream(raw?.streaming),
     temperature: supported(raw?.temperature),
     timestamps: {
@@ -176,6 +181,33 @@ function deriveLanguages(entry: ServerModelEntry): string[] | undefined {
   if (Array.isArray(entry.languages)) return entry.languages;
   const hint = entry.capabilities?.language_hint;
   return hint?.languages ?? hint?.extra?.languages ?? hint?.model_claim ?? hint?.extra?.model_claim;
+}
+
+/** The primary language subtag: `en-US` and `en_us` are both `en`. */
+function baseLanguage(code: string): string {
+  return code.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+}
+
+/**
+ * Throws unless `model` can translate into `target`. A translating model that reports no target list is English-only.
+ * The server transcribes instead when the source language already is the target, so that case is not refused here.
+ */
+function assertCanTranslate(
+  model: string,
+  caps: ModelCapabilities | undefined,
+  target: string,
+  source: string | null | undefined,
+): void {
+  if (!caps?.translation) {
+    throw new UnsupportedCapabilityError(`Model "${model}" does not support translation.`);
+  }
+  if (source && baseLanguage(source) === baseLanguage(target)) return;
+  const offered = caps.translationTargets ?? ["en"];
+  if (!offered.includes(target)) {
+    throw new UnsupportedCapabilityError(
+      `Model "${model}" cannot translate into "${target}" (it offers: ${offered.join(", ")}).`,
+    );
+  }
 }
 
 function mapModelEntry(entry: ServerModelEntry): ModelInfo {
@@ -372,6 +404,7 @@ export class SttServerProvider implements SttProvider {
   private buildForm(
     request: BatchTranscriptionRequest,
     caps: ModelCapabilities | undefined,
+    targetLanguage: string | undefined,
   ): FormData {
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename?.trim() || "recording.wav");
@@ -388,6 +421,8 @@ export class SttServerProvider implements SttProvider {
     if (request.temperature !== undefined && caps?.temperature) {
       form.append("temperature", String(request.temperature));
     }
+    // English is what the translations endpoint does without the field, and an older server rejects the field.
+    if (targetLanguage && targetLanguage !== "en") form.append("target_language", targetLanguage);
     if (request.wordTimestamps && caps?.timestamps?.word) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities", "word");
@@ -401,22 +436,21 @@ export class SttServerProvider implements SttProvider {
     return form;
   }
 
+  /** `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. */
   private async postAudio(
     path: string,
     request: BatchTranscriptionRequest,
-    requireTranslation: boolean,
+    translation?: { targetLanguage: string },
   ): Promise<TranscriptionResult> {
     await this.ensureVersion();
     let caps = await this.resolveModelCapabilities(request.model);
 
-    if (requireTranslation && !caps?.translation) {
-      throw new UnsupportedCapabilityError(
-        `Model "${request.model ?? "default"}" does not support translation.`,
-      );
+    if (translation) {
+      assertCanTranslate(request.model ?? "default", caps, translation.targetLanguage, request.language);
     }
 
     const attempt = async (): Promise<Response> => {
-      const form = this.buildForm(request, caps);
+      const form = this.buildForm(request, caps, translation?.targetLanguage);
       try {
         return await this.fetchImpl(`${this.baseUrl}${path}`, {
           method: "POST",
@@ -448,17 +482,21 @@ export class SttServerProvider implements SttProvider {
   }
 
   async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/transcriptions", request, false);
+    return this.postAudio("/v1/audio/transcriptions", request);
   }
 
   async translate(request: BatchTranslationRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/translations", request, true);
+    return this.postAudio("/v1/audio/translations", request, {
+      targetLanguage: request.targetLanguage?.trim() || "en",
+    });
   }
 
   /**
    * Live transcription of `config.model` (`default` = the server's default) over `/v1/realtime`. Only models whose
    * `ModelInfo.capabilities.streaming` is true can stream; the audio is 16-bit PCM mono at `config.sampleRate`.
    * Rejects with {@link UnsupportedCapabilityError} otherwise, so the caller falls back to {@link transcribe}.
+   * With `config.targetLanguage` the turns are translated instead: that needs `capabilities.translation` (and a target
+   * the model offers) but not streaming, because a model that cannot stream translates the whole turn at `stop()`.
    * The server runs one stream at a time and cannot transcribe a batch with the streaming model meanwhile.
    */
   async createStream(config: StreamConfig): Promise<StreamSession> {
@@ -468,7 +506,10 @@ export class SttServerProvider implements SttProvider {
     await this.ensureVersion();
     const model = config.model?.trim() || "default";
     const caps = await this.resolveModelCapabilities(model);
-    if (!caps?.streaming) {
+    const targetLanguage = config.targetLanguage?.trim();
+    if (targetLanguage) {
+      assertCanTranslate(model, caps, targetLanguage, config.language);
+    } else if (!caps?.streaming) {
       throw new UnsupportedCapabilityError(`Model "${model}" does not support live transcription.`);
     }
     const url = new URL("/v1/realtime", this.baseUrl.replace(/^http/, "ws"));
@@ -476,7 +517,7 @@ export class SttServerProvider implements SttProvider {
     url.searchParams.set("model", model);
     const session = new SttServerStreamSession(
       { url: url.toString(), token: this.token, openSocket: this.openSocket, connectTimeoutMs: 5000, stopTimeoutMs: 10000 },
-      config,
+      { ...config, targetLanguage },
     );
     await session.start();
     return session;

@@ -436,6 +436,93 @@ describe("SttServerProvider — translate", () => {
   });
 });
 
+describe("SttServerProvider — translation targets", () => {
+  const translating = (target_languages: string[] | null | undefined, status = "supported") => ({
+    status,
+    ...(target_languages === undefined ? {} : { target_languages }),
+  });
+  const modelsWith = (translation: Record<string, unknown>) => ({
+    object: "list",
+    data: [{ id: "m", default: true, capabilities: { translation, language_hint: { status: "supported" } } }],
+  });
+  const providerFor = (translation: Record<string, unknown>, captures: Capture[] = []) =>
+    makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/models": () => jsonResponse(modelsWith(translation)),
+        "/v1/audio/translations": () => jsonResponse({ text: "translated" }),
+      },
+      captures,
+    );
+  const posted = (captures: Capture[]) => captures.filter((c) => c.url.endsWith("/v1/audio/translations"));
+  const sentTarget = (capture: Capture) => (capture.init?.body as FormData).get("target_language");
+  const audio = new Uint8Array([1]);
+
+  it("reads the model's own target list, and nothing when it does not advertise one", async () => {
+    const targets = async (translation: Record<string, unknown>) =>
+      (await providerFor(translation).listModels())[0]!.capabilities!.translationTargets;
+    expect(await targets(translating(["en", "de"]))).toEqual(["en", "de"]);
+    expect(await targets(translating(null))).toBeUndefined();
+    expect(await targets(translating([]))).toBeUndefined();
+    expect(await targets(translating(["en"], "unknown"))).toBeUndefined();
+  });
+
+  it("sends target_language for a target the model offers", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en", "de"]), captures);
+    const result = await provider.translate({ file: audio, targetLanguage: " de " });
+    expect(result.text).toBe("translated");
+    expect(sentTarget(posted(captures)[0]!)).toBe("de");
+  });
+
+  it("leaves the field out for English, the endpoint's default, so older servers keep working", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en", "de"]), captures);
+    await provider.translate({ file: audio });
+    await provider.translate({ file: audio, targetLanguage: "en" });
+    expect(posted(captures)).toHaveLength(2);
+    expect(posted(captures).map(sentTarget)).toEqual([null, null]);
+  });
+
+  it("refuses a target the model does not offer, without posting", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en", "de"]), captures);
+    const error = await provider.translate({ file: audio, targetLanguage: "fr" }).catch((e) => e);
+    expect(error).toBeInstanceOf(UnsupportedCapabilityError);
+    expect(error.message).toContain("en, de");
+    expect(posted(captures)).toHaveLength(0);
+  });
+
+  it("treats a translating model with no advertised list as English only", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(null), captures);
+    await expect(provider.translate({ file: audio, targetLanguage: "de" })).rejects.toBeInstanceOf(
+      UnsupportedCapabilityError,
+    );
+    await provider.translate({ file: audio, targetLanguage: "en" });
+    expect(posted(captures)).toHaveLength(1);
+  });
+
+  it("does not refuse a target equal to the source language, which the server transcribes", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en"]), captures);
+    await provider.translate({ file: audio, language: "fr-FR", targetLanguage: "fr" });
+    expect(sentTarget(posted(captures)[0]!)).toBe("fr");
+  });
+
+  it("passes the server's unsupported_target_language through with its code", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () => jsonResponse(modelsWith(translating(["en", "de"]))),
+      "/v1/audio/translations": () =>
+        jsonResponse({ error: { code: "unsupported_target_language", message: "no" } }, 422),
+    });
+    const error = await provider.translate({ file: audio, targetLanguage: "de" }).catch((e) => e);
+    expect(error.code).toBe("unsupported_target_language");
+    expect(error.status).toBe(422);
+  });
+});
+
 describe("SttServerProvider — error mapping", () => {
   const cases: Array<{
     code: string;

@@ -165,6 +165,7 @@ export class SttServerStreamSession implements StreamSession {
     const transcription: Record<string, string> = {};
     if (this.config.model && this.config.model !== "default") transcription.model = this.config.model;
     if (this.config.language) transcription.language = this.config.language;
+    if (this.config.targetLanguage) transcription.target_language = this.config.targetLanguage;
     if (this.config.prompt) transcription.prompt = this.config.prompt;
     return {
       type: "transcription_session.update",

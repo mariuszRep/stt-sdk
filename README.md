@@ -79,7 +79,14 @@ const result = await provider.transcribe({
 
 // Translation to English, where the chosen model supports it:
 const translated = await provider.translate({ file, model: "whisper-tiny" });
+
+// Another target language, when the model offers it (an stt-server extension to OpenAI's English-only endpoint):
+const german = await provider.translate({ file, model: "canary", targetLanguage: "de" });
 ```
+
+A model's `capabilities.translationTargets` lists the languages it translates into; a translating model that does
+not report a list translates into English only. `translate()` and `createStream({ targetLanguage })` reject with
+`UnsupportedCapabilityError` for a target the model does not offer.
 
 `SttServerProvider` connects with an address and a token like a cloud provider —
 no discovery, install, model management, or server lifecycle. It checks `GET /health`
@@ -101,6 +108,8 @@ over the server's `WS /v1/realtime?intent=transcription`. `sendAudio()` takes PC
 `partial` events carry `committed` (final, append-only) and `tentative` (may still change)
 text plus a `revision`; `stop()` commits and resolves after the `final` event. A model
 that does not stream rejects with `UnsupportedCapabilityError` — fall back to `transcribe()`.
+With `targetLanguage` the turns are translated instead, which needs `capabilities.translation` but not streaming: a model
+that cannot stream translates the whole turn when `stop()` commits it, so the `final` event arrives without `partial`s.
 The server runs one stream at a time and cannot transcribe a batch with the streaming
 model meanwhile. A browser `WebSocket` cannot send the bearer header, so a webview passes
 `webSocketFactory`; Node needs nothing.

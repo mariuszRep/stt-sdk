@@ -91,6 +91,12 @@ export interface StreamConfig {
   sampleRate: number;
   channels: number;
   prompt?: string;
+  /**
+   * Translate each turn into this language (an stt-server extension). Needs a model with `capabilities.translation`;
+   * a model that cannot stream translates per turn, so the text arrives whole after `stop()` instead of while
+   * speaking. Unset: plain transcription.
+   */
+  targetLanguage?: string;
   auth?: string;
 }
 
@@ -173,6 +179,11 @@ export interface ModelCapabilities {
   /** Whether this model can auto-detect the spoken language. */
   languageDetect?: boolean;
   translation?: boolean;
+  /**
+   * The languages this model translates into, where it reports them. Absent for a translating model that does not
+   * advertise its targets: such a model translates into English only.
+   */
+  translationTargets?: string[];
   /** Whether this model can transcribe live audio through `createStream`. */
   streaming?: boolean;
   temperature?: boolean;
@@ -222,8 +233,15 @@ export interface TranscriptionResult {
   diagnostics?: Record<string, unknown>;
 }
 
-/** Optional request for translating speech in another language to English. */
-export interface BatchTranslationRequest extends BatchTranscriptionRequest {}
+/** Optional request for translating speech in another language (English unless `targetLanguage` says otherwise). */
+export interface BatchTranslationRequest extends BatchTranscriptionRequest {
+  /**
+   * The language to translate into, one of the model's `capabilities.translationTargets` (English only when the model
+   * reports none). Defaults to English, which is all OpenAI's translations endpoint offers; other targets are an
+   * stt-server extension.
+   */
+  targetLanguage?: string;
+}
 
 // ── Streaming session ────────────────────────────────────────────────────
 
