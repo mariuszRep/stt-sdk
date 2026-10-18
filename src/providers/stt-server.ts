@@ -156,7 +156,9 @@ function deriveCapabilities(
   const translationTargets = translates ? raw?.translation?.target_languages : undefined;
   return {
     prompt: supported(raw?.prompt),
-    languageHint: supported(raw?.language_hint),
+    // Like translation, a model that is not loaded yet reports the languages it claims (`unknown` status): that is
+    // enough to send the hint, which the server refuses for a model that cannot take it.
+    languageHint: supported(raw?.language_hint) || claimsLanguages(raw?.language_hint),
     languageDetect: supported(raw?.language_detect),
     translation: translates,
     // Only a non-empty list is a real answer: `null` is "not advertised" (English only) and `[]` is "none".
@@ -181,6 +183,11 @@ function deriveCapabilities(
  */
 function confirmedOrClaimed(control?: ControlCapability): boolean {
   return control?.status === "supported" || (control?.status === "unknown" && control.model_claim === true);
+}
+
+/** Whether an unconfirmed `language_hint` carries a list of languages the catalog claims the model understands. */
+function claimsLanguages(control?: LanguageHintCapability): boolean {
+  return control?.status === "unknown" && Array.isArray(control.model_claim) && control.model_claim.length > 0;
 }
 
 /**

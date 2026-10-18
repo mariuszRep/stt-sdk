@@ -240,6 +240,9 @@ describe("SttServerProvider — listModels mapping", () => {
     const catalog = models.find((m) => m.id === "catalog-model")!;
     expect(catalog.languages).toEqual(["en", "fr"]);
     expect(catalog.capabilities?.languageDetect).toBe(false);
+    // The catalog's list of languages is enough to send the hint; an unknown status with no list is not.
+    expect(catalog.capabilities?.languageHint).toBe(true);
+    expect(live.capabilities?.languageHint).toBe(true);
   });
 
   it("maps the server's name field through when present", async () => {
