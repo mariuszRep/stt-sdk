@@ -82,6 +82,10 @@ const translated = await provider.translate({ file, model: "whisper-tiny" });
 
 // Another target language, when the model offers it (an stt-server extension to OpenAI's English-only endpoint):
 const german = await provider.translate({ file, model: "canary", targetLanguage: "de" });
+
+// A subtitle file ("srt" or "vtt", as in OpenAI's response_format) instead of a result object: the text of the file.
+// A model without segment timestamps rejects with UnsupportedCapabilityError. Works on translate() too.
+const subtitles: string = await provider.transcribe({ file, model: "whisper-tiny", responseFormat: "srt" });
 ```
 
 Where speech is in a finished recording (Silero VAD running in the server, no model needed; an stt-server extension,

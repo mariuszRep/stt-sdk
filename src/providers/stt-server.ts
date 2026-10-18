@@ -11,6 +11,8 @@ import type {
   SpeechDetectionResult,
   StreamConfig,
   StreamSession,
+  SubtitleFormat,
+  SubtitleRequest,
   TranscriptionResult,
   TranscriptionSegment,
   TranscriptWord,
@@ -440,6 +442,7 @@ export class SttServerProvider implements SttProvider {
     request: BatchTranscriptionRequest,
     caps: ModelCapabilities | undefined,
     targetLanguage: string | undefined,
+    subtitleFormat: SubtitleFormat | undefined,
   ): FormData {
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename?.trim() || "recording.wav");
@@ -458,7 +461,11 @@ export class SttServerProvider implements SttProvider {
     }
     // English is what the translations endpoint does without the field, and an older server rejects the field.
     if (targetLanguage && targetLanguage !== "en") form.append("target_language", targetLanguage);
-    if (request.wordTimestamps && caps?.timestamps?.word) {
+    if (subtitleFormat) {
+      // The server renders the segment timestamps itself and refuses a model that has none, so there is no
+      // capability to check (or fall back from) here.
+      form.append("response_format", subtitleFormat);
+    } else if (request.wordTimestamps && caps?.timestamps?.word) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities", "word");
     } else if (request.wordTimestamps && caps?.timestamps?.segment) {
@@ -472,15 +479,15 @@ export class SttServerProvider implements SttProvider {
   }
 
   /**
-   * POSTs the form `build` makes to `path` and returns the parsed JSON body. When the server answers with a code that
-   * says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
+   * POSTs the form `build` makes to `path` and returns the successful response. When the server answers with a code
+   * that says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
    */
-  private async postForm(
+  private async postFormResponse(
     path: string,
     build: () => FormData,
     signal: AbortSignal | undefined,
     refresh?: () => Promise<void>,
-  ): Promise<unknown> {
+  ): Promise<Response> {
     const attempt = async (): Promise<Response> => {
       const form = build();
       try {
@@ -508,15 +515,29 @@ export class SttServerProvider implements SttProvider {
       }
     }
     if (!res.ok) throw await this.toServerError(res);
-    return res.json();
+    return res;
   }
 
-  /** `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. */
+  /** {@link postFormResponse} for an endpoint that answers with JSON. */
+  private async postForm(
+    path: string,
+    build: () => FormData,
+    signal: AbortSignal | undefined,
+    refresh?: () => Promise<void>,
+  ): Promise<unknown> {
+    return (await this.postFormResponse(path, build, signal, refresh)).json();
+  }
+
+  /**
+   * `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. With
+   * `subtitleFormat` the answer is the subtitle file's text.
+   */
   private async postAudio(
     path: string,
     request: BatchTranscriptionRequest,
     translation?: { targetLanguage: string },
-  ): Promise<TranscriptionResult> {
+    subtitleFormat?: SubtitleFormat,
+  ): Promise<Response> {
     await this.ensureVersion();
     let caps = await this.resolveModelCapabilities(request.model);
 
@@ -524,23 +545,45 @@ export class SttServerProvider implements SttProvider {
       assertCanTranslate(request.model ?? "default", caps, translation.targetLanguage, request.language);
     }
 
-    const body = await this.postForm(
+    return this.postFormResponse(
       path,
-      () => this.buildForm(request, caps, translation?.targetLanguage),
+      () => this.buildForm(request, caps, translation?.targetLanguage, subtitleFormat),
       request.signal,
       async () => {
         caps = (await this.getModelsCache(true)).get(request.model ?? "")?.capabilities ?? caps;
       },
     );
-    return mapTranscriptionResponse(body as ServerTranscriptionResponse);
   }
 
-  async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/transcriptions", request);
+  /** Posts to the transcriptions or translations endpoint and reads the answer as a result, or as subtitles. */
+  private async requestAudio(
+    path: string,
+    request: BatchTranscriptionRequest & Partial<SubtitleRequest>,
+    translation?: { targetLanguage: string },
+  ): Promise<TranscriptionResult | string> {
+    const subtitleFormat = request.responseFormat;
+    const res = await this.postAudio(path, request, translation, subtitleFormat);
+    return subtitleFormat
+      ? res.text()
+      : mapTranscriptionResponse((await res.json()) as ServerTranscriptionResponse);
   }
 
-  async translate(request: BatchTranslationRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/translations", request, {
+  /**
+   * Transcribes `request.file`. With `responseFormat: "srt"` or `"vtt"` the answer is that subtitle file's text
+   * (cues from the segment timestamps, as OpenAI's endpoint returns them); a model without segment timestamps is
+   * refused with {@link UnsupportedCapabilityError}.
+   */
+  async transcribe(request: BatchTranscriptionRequest & SubtitleRequest): Promise<string>;
+  async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult>;
+  async transcribe(request: BatchTranscriptionRequest & Partial<SubtitleRequest>): Promise<TranscriptionResult | string> {
+    return this.requestAudio("/v1/audio/transcriptions", request);
+  }
+
+  /** Translates `request.file`; `responseFormat` works as for {@link transcribe}. */
+  async translate(request: BatchTranslationRequest & SubtitleRequest): Promise<string>;
+  async translate(request: BatchTranslationRequest): Promise<TranscriptionResult>;
+  async translate(request: BatchTranslationRequest & Partial<SubtitleRequest>): Promise<TranscriptionResult | string> {
+    return this.requestAudio("/v1/audio/translations", request, {
       targetLanguage: request.targetLanguage?.trim() || "en",
     });
   }

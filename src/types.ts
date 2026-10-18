@@ -212,6 +212,17 @@ export interface BatchTranscriptionRequest {
   signal?: AbortSignal;
 }
 
+/** A subtitle file format stt-server renders from the segment timestamps, named as in OpenAI's `response_format`. */
+export type SubtitleFormat = "srt" | "vtt";
+
+/**
+ * Adds to a batch request: ask for a subtitle file instead of a {@link TranscriptionResult}. `SttServerProvider`'s
+ * `transcribe` and `translate` then return the file's text. `wordTimestamps` is ignored.
+ */
+export interface SubtitleRequest {
+  responseFormat: SubtitleFormat;
+}
+
 export interface TranscriptionSegment {
   text: string;
   startMs: number;

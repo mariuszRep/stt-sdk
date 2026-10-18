@@ -27,6 +27,8 @@ export type {
   ModelCapabilities,
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  SubtitleFormat,
+  SubtitleRequest,
   SpeechDetectionOptions,
   SpeechDetectionResult,
   SpeechSegment,
