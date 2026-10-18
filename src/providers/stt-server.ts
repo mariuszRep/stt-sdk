@@ -2,6 +2,10 @@ import type { SttProvider } from "../provider";
 import type {
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  DiarizationOptions,
+  DiarizationResult,
+  KnownSpeakerEmbedding,
+  KnownSpeakerReference,
   ModelCapabilities,
   ModelInfo,
   ProviderCapability,
@@ -151,6 +155,24 @@ function decodeFloat32(encoded: string): number[] {
   const view = new DataView(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i++) view.setUint8(i, binary.charCodeAt(i));
   return Array.from({ length: binary.length / 4 }, (_, i) => view.getFloat32(i * 4, true));
+}
+
+/** Base64 of bytes, in chunks so a long clip does not overflow the argument limit. */
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** Base64 of the little-endian f32 bytes of an embedding (`known_speaker_embeddings[]`). */
+function encodeFloat32(values: ArrayLike<number>): string {
+  const view = new DataView(new ArrayBuffer(values.length * 4));
+  for (let i = 0; i < values.length; i++) view.setFloat32(i * 4, values[i]!, true);
+  return encodeBase64(new Uint8Array(view.buffer));
+}
+
+function isReference(speaker: object): speaker is KnownSpeakerReference {
+  return "audio" in speaker;
 }
 
 /**
@@ -656,6 +678,49 @@ export class SttServerProvider implements SttProvider {
         embedding: typeof embedding === "string" ? decodeFloat32(embedding) : embedding,
       })),
     };
+  }
+
+  /**
+   * Who spoke when in a finished recording (`POST /v1/audio/diarize`, an stt-server extension): the speech segments
+   * (`options.segments`, or the server's own detection) are fingerprinted, clustered by voice and labelled "A", "B", ...
+   * or with the names of `options.knownSpeakers`. The answer has the shape of OpenAI's `diarized_json` segments but no
+   * text: transcribe separately and join by time. `audio` must be a WAV file. Needs no loaded model, runs on the CPU
+   * and never waits behind a transcription. An stt-server older than this endpoint answers 404, which surfaces as a
+   * {@link ServerError}. The server does the clustering; `clusterSpeakers` is the same algorithm for embeddings you hold.
+   */
+  async diarize(audio: Blob | ArrayBuffer | Uint8Array, options: DiarizationOptions = {}): Promise<DiarizationResult> {
+    await this.ensureVersion();
+    const known: Array<KnownSpeakerEmbedding | KnownSpeakerReference> = options.knownSpeakers ?? [];
+    const references = known.filter(isReference);
+    if (references.length > 0 && references.length < known.length) {
+      throw new TypeError("knownSpeakers takes embeddings or reference clips, not both.");
+    }
+    // A clip travels as a data URL, which is how OpenAI takes `known_speaker_references[]`.
+    const clips = await Promise.all(
+      references.map(async ({ audio: clip }) => {
+        const bytes = new Uint8Array(await toBlob(clip).arrayBuffer());
+        return `data:audio/wav;base64,${encodeBase64(bytes)}`;
+      }),
+    );
+    return (await this.postForm(
+      "/v1/audio/diarize",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        if (options.segments) {
+          form.append("segments", JSON.stringify(options.segments.map(({ start, end }) => ({ start, end }))));
+        }
+        if (options.threshold !== undefined) form.append("threshold", String(options.threshold));
+        if (options.maxSpeakers !== undefined) form.append("max_speakers", String(options.maxSpeakers));
+        for (const { name } of known) form.append("known_speaker_names[]", name);
+        for (const clip of clips) form.append("known_speaker_references[]", clip);
+        for (const speaker of known) {
+          if (!isReference(speaker)) form.append("known_speaker_embeddings[]", encodeFloat32(speaker.embedding));
+        }
+        return form;
+      },
+      options.signal,
+    )) as DiarizationResult;
   }
 
   /**

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { clusterSpeakers, cosineSimilarity, matchSpeaker } from "../src/speakers";
 import fixture from "./fixtures/two-speaker-embeddings.json";
+import golden from "./fixtures/cluster-golden.json";
 
 describe("cosineSimilarity", () => {
   it("is 1 for the same direction, 0 for orthogonal and -1 for opposite vectors", () => {
@@ -97,5 +98,14 @@ describe("clusterSpeakers", () => {
     ];
     expect(matchSpeaker(fixture.embeddings[2]!, profiles, 0.4)!.profile.speaker).toBe("A");
     expect(matchSpeaker(fixture.embeddings[3]!, profiles, 0.4)!.profile.speaker).toBe("B");
+  });
+});
+
+describe("clusterSpeakers against the stt-server implementation", () => {
+  // stt-server's /v1/audio/diarize clusters with a Rust port of this algorithm. Both must give these labels
+  // (the same file is stt-server's tests/fixtures/cluster-golden.json); change them together.
+  it.each(golden.cases.map((c) => [JSON.stringify(c), c] as const))("gives the shared labels for %s", (_, c) => {
+    const options = { threshold: c.threshold, maxSpeakers: c.max_speakers ?? Infinity };
+    expect(clusterSpeakers(golden.embeddings, options)).toEqual(c.labels);
   });
 });

@@ -58,7 +58,8 @@ export interface ClusterOptions {
  * Groups embeddings by voice with average-linkage agglomerative clustering: every embedding starts alone, and the two
  * clusters with the highest mean pairwise cosine similarity merge while that mean is at least `threshold` or more than
  * `maxSpeakers` clusters remain. Returns one label per input, numbered from 0 in order of first appearance; a null
- * embedding (a segment too short to fingerprint) gets -1.
+ * embedding (a segment too short to fingerprint) gets -1. stt-server's `/v1/audio/diarize` runs a Rust port of this
+ * algorithm; both are tested against the same cases (`test/fixtures/cluster-golden.json`), so change them together.
  */
 export function clusterSpeakers(
   embeddings: ReadonlyArray<ArrayLike<number> | null>,
