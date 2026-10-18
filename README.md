@@ -82,6 +82,10 @@ const translated = await provider.translate({ file, model: "whisper-tiny" });
 
 // Another target language, when the model offers it (an stt-server extension to OpenAI's English-only endpoint):
 const german = await provider.translate({ file, model: "canary", targetLanguage: "de" });
+
+// A subtitle file ("srt" or "vtt", as in OpenAI's response_format) instead of a result object: the text of the file.
+// A model without segment timestamps rejects with UnsupportedCapabilityError. Works on translate() too.
+const subtitles: string = await provider.transcribe({ file, model: "whisper-tiny", responseFormat: "srt" });
 ```
 
 Where speech is in a finished recording (Silero VAD running in the server, no model needed; an stt-server extension,
@@ -90,6 +94,31 @@ WAV audio; live detection stays in the client):
 ```ts
 const { segments, speechRatio, duration } = await provider.detectSpeech(file, { threshold: 0.5, minSpeechMs: 250 });
 // segments: [{ start: 0.26, end: 2.94 }, ...] in seconds
+```
+
+Voice fingerprints of a finished recording (CAM++ running in the server, no model needed; an stt-server extension, WAV
+audio). Each segment gets a unit-length embedding; segments under 0.5 s get `null`. Left out, `segments` come from the
+server's own speech detection. The pure helpers compare embeddings of one `model` (store it beside saved profiles):
+
+```ts
+import { clusterSpeakers, cosineSimilarity, matchSpeaker } from "@open-vibe-ai/stt-sdk";
+
+const { model, segments } = await provider.embedSpeakers(file, { segments: [{ start: 0, end: 4.2 }] });
+const labels = clusterSpeakers(segments.map((s) => s.embedding), { threshold: 0.4, maxSpeakers: 4 }); // [0, 1, 0, ...]
+const who = matchSpeaker(segments[0].embedding!, savedProfiles, 0.4); // { profile, similarity } or null
+const alike = cosineSimilarity(a, b); // -1..1; about 0.4 and up is the same voice with this model
+```
+
+Who spoke when, decided by the server (`POST /v1/audio/diarize`, an stt-server extension; it clusters with the same
+algorithm as `clusterSpeakers`). The answer has the shape of OpenAI's `diarized_json` segments, **without text**:
+transcribe separately and join by time. Known voices are named by embedding (from `embedSpeakers`) or by a 2-10 s
+reference clip, never both in one call:
+
+```ts
+const { segments } = await provider.diarize(file, { threshold: 0.4, maxSpeakers: 4 });
+// segments: [{ type: "transcript.text.segment", id: "seg_0", start: 0, end: 2.5, speaker: "A" }, ...]
+await provider.diarize(file, { knownSpeakers: [{ name: "Ann", embedding: annProfile }] }); // "Ann", "A", "B", ...
+await provider.diarize(file, { knownSpeakers: [{ name: "Ann", audio: annClip }] }); // a WAV clip of Ann
 ```
 
 A model's `capabilities.translationTargets` lists the languages it translates into; a translating model that does
@@ -154,7 +183,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`), speaker embeddings (`embedSpeakers()`, `POST /v1/audio/embeddings`, with `cosineSimilarity`/`matchSpeaker`/`clusterSpeakers`), diarization (`diarize()`, `POST /v1/audio/diarize`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw

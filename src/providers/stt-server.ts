@@ -2,13 +2,21 @@ import type { SttProvider } from "../provider";
 import type {
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  DiarizationOptions,
+  DiarizationResult,
+  KnownSpeakerEmbedding,
+  KnownSpeakerReference,
   ModelCapabilities,
   ModelInfo,
   ProviderCapability,
+  SpeakerEmbeddingOptions,
+  SpeakerEmbeddingResult,
   SpeechDetectionOptions,
   SpeechDetectionResult,
   StreamConfig,
   StreamSession,
+  SubtitleFormat,
+  SubtitleRequest,
   TranscriptionResult,
   TranscriptionSegment,
   TranscriptWord,
@@ -127,11 +135,44 @@ interface ServerTranscriptionResponse {
   x_diagnostics?: Record<string, unknown>;
 }
 
+interface ServerSpeakerEmbeddingResponse {
+  model: string;
+  dim: number;
+  duration: number;
+  segments: Array<{ start: number; end: number; embedding: string | number[] | null }>;
+}
+
 interface ServerSpeechDetectionResponse {
   duration: number;
   speech_seconds: number;
   speech_ratio: number;
   segments: Array<{ start: number; end: number }>;
+}
+
+/** Decodes base64 of little-endian f32 bytes (the server's `encoding_format: "base64"`). */
+function decodeFloat32(encoded: string): number[] {
+  const binary = atob(encoded);
+  const view = new DataView(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) view.setUint8(i, binary.charCodeAt(i));
+  return Array.from({ length: binary.length / 4 }, (_, i) => view.getFloat32(i * 4, true));
+}
+
+/** Base64 of bytes, in chunks so a long clip does not overflow the argument limit. */
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** Base64 of the little-endian f32 bytes of an embedding (`known_speaker_embeddings[]`). */
+function encodeFloat32(values: ArrayLike<number>): string {
+  const view = new DataView(new ArrayBuffer(values.length * 4));
+  for (let i = 0; i < values.length; i++) view.setFloat32(i * 4, values[i]!, true);
+  return encodeBase64(new Uint8Array(view.buffer));
+}
+
+function isReference(speaker: object): speaker is KnownSpeakerReference {
+  return "audio" in speaker;
 }
 
 /**
@@ -423,6 +464,7 @@ export class SttServerProvider implements SttProvider {
     request: BatchTranscriptionRequest,
     caps: ModelCapabilities | undefined,
     targetLanguage: string | undefined,
+    subtitleFormat: SubtitleFormat | undefined,
   ): FormData {
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename?.trim() || "recording.wav");
@@ -441,7 +483,11 @@ export class SttServerProvider implements SttProvider {
     }
     // English is what the translations endpoint does without the field, and an older server rejects the field.
     if (targetLanguage && targetLanguage !== "en") form.append("target_language", targetLanguage);
-    if (request.wordTimestamps && caps?.timestamps?.word) {
+    if (subtitleFormat) {
+      // The server renders the segment timestamps itself and refuses a model that has none, so there is no
+      // capability to check (or fall back from) here.
+      form.append("response_format", subtitleFormat);
+    } else if (request.wordTimestamps && caps?.timestamps?.word) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities", "word");
     } else if (request.wordTimestamps && caps?.timestamps?.segment) {
@@ -455,15 +501,15 @@ export class SttServerProvider implements SttProvider {
   }
 
   /**
-   * POSTs the form `build` makes to `path` and returns the parsed JSON body. When the server answers with a code that
-   * says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
+   * POSTs the form `build` makes to `path` and returns the successful response. When the server answers with a code
+   * that says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
    */
-  private async postForm(
+  private async postFormResponse(
     path: string,
     build: () => FormData,
     signal: AbortSignal | undefined,
     refresh?: () => Promise<void>,
-  ): Promise<unknown> {
+  ): Promise<Response> {
     const attempt = async (): Promise<Response> => {
       const form = build();
       try {
@@ -491,15 +537,29 @@ export class SttServerProvider implements SttProvider {
       }
     }
     if (!res.ok) throw await this.toServerError(res);
-    return res.json();
+    return res;
   }
 
-  /** `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. */
+  /** {@link postFormResponse} for an endpoint that answers with JSON. */
+  private async postForm(
+    path: string,
+    build: () => FormData,
+    signal: AbortSignal | undefined,
+    refresh?: () => Promise<void>,
+  ): Promise<unknown> {
+    return (await this.postFormResponse(path, build, signal, refresh)).json();
+  }
+
+  /**
+   * `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. With
+   * `subtitleFormat` the answer is the subtitle file's text.
+   */
   private async postAudio(
     path: string,
     request: BatchTranscriptionRequest,
     translation?: { targetLanguage: string },
-  ): Promise<TranscriptionResult> {
+    subtitleFormat?: SubtitleFormat,
+  ): Promise<Response> {
     await this.ensureVersion();
     let caps = await this.resolveModelCapabilities(request.model);
 
@@ -507,23 +567,45 @@ export class SttServerProvider implements SttProvider {
       assertCanTranslate(request.model ?? "default", caps, translation.targetLanguage, request.language);
     }
 
-    const body = await this.postForm(
+    return this.postFormResponse(
       path,
-      () => this.buildForm(request, caps, translation?.targetLanguage),
+      () => this.buildForm(request, caps, translation?.targetLanguage, subtitleFormat),
       request.signal,
       async () => {
         caps = (await this.getModelsCache(true)).get(request.model ?? "")?.capabilities ?? caps;
       },
     );
-    return mapTranscriptionResponse(body as ServerTranscriptionResponse);
   }
 
-  async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/transcriptions", request);
+  /** Posts to the transcriptions or translations endpoint and reads the answer as a result, or as subtitles. */
+  private async requestAudio(
+    path: string,
+    request: BatchTranscriptionRequest & Partial<SubtitleRequest>,
+    translation?: { targetLanguage: string },
+  ): Promise<TranscriptionResult | string> {
+    const subtitleFormat = request.responseFormat;
+    const res = await this.postAudio(path, request, translation, subtitleFormat);
+    return subtitleFormat
+      ? res.text()
+      : mapTranscriptionResponse((await res.json()) as ServerTranscriptionResponse);
   }
 
-  async translate(request: BatchTranslationRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/translations", request, {
+  /**
+   * Transcribes `request.file`. With `responseFormat: "srt"` or `"vtt"` the answer is that subtitle file's text
+   * (cues from the segment timestamps, as OpenAI's endpoint returns them); a model without segment timestamps is
+   * refused with {@link UnsupportedCapabilityError}.
+   */
+  async transcribe(request: BatchTranscriptionRequest & SubtitleRequest): Promise<string>;
+  async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult>;
+  async transcribe(request: BatchTranscriptionRequest & Partial<SubtitleRequest>): Promise<TranscriptionResult | string> {
+    return this.requestAudio("/v1/audio/transcriptions", request);
+  }
+
+  /** Translates `request.file`; `responseFormat` works as for {@link transcribe}. */
+  async translate(request: BatchTranslationRequest & SubtitleRequest): Promise<string>;
+  async translate(request: BatchTranslationRequest): Promise<TranscriptionResult>;
+  async translate(request: BatchTranslationRequest & Partial<SubtitleRequest>): Promise<TranscriptionResult | string> {
+    return this.requestAudio("/v1/audio/translations", request, {
       targetLanguage: request.targetLanguage?.trim() || "en",
     });
   }
@@ -558,6 +640,87 @@ export class SttServerProvider implements SttProvider {
       options.signal,
     )) as ServerSpeechDetectionResponse;
     return { segments: body.segments, speechRatio: body.speech_ratio, duration: body.duration };
+  }
+
+  /**
+   * Voice fingerprints of a finished recording (`POST /v1/audio/embeddings`, an stt-server extension): one embedding per
+   * segment of `options.segments`, or per speech segment the server's own detection finds. The embeddings are unit
+   * vectors of one model (see {@link SpeakerEmbeddingResult.model}); compare them with `cosineSimilarity`, `matchSpeaker`
+   * and `clusterSpeakers`. `audio` must be a WAV file, as for {@link transcribe}. Needs no loaded model and never waits
+   * behind a transcription. An stt-server older than this endpoint answers 404, which surfaces as a {@link ServerError}.
+   */
+  async embedSpeakers(
+    audio: Blob | ArrayBuffer | Uint8Array,
+    options: SpeakerEmbeddingOptions = {},
+  ): Promise<SpeakerEmbeddingResult> {
+    await this.ensureVersion();
+    const body = (await this.postForm(
+      "/v1/audio/embeddings",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        if (options.segments) {
+          form.append("segments", JSON.stringify(options.segments.map(({ start, end }) => ({ start, end }))));
+        }
+        // Base64 of the f32 bytes is a third of the size of the JSON numbers.
+        form.append("encoding_format", "base64");
+        return form;
+      },
+      options.signal,
+    )) as ServerSpeakerEmbeddingResponse;
+    return {
+      model: body.model,
+      dim: body.dim,
+      duration: body.duration,
+      segments: body.segments.map(({ start, end, embedding }) => ({
+        start,
+        end,
+        embedding: typeof embedding === "string" ? decodeFloat32(embedding) : embedding,
+      })),
+    };
+  }
+
+  /**
+   * Who spoke when in a finished recording (`POST /v1/audio/diarize`, an stt-server extension): the speech segments
+   * (`options.segments`, or the server's own detection) are fingerprinted, clustered by voice and labelled "A", "B", ...
+   * or with the names of `options.knownSpeakers`. The answer has the shape of OpenAI's `diarized_json` segments but no
+   * text: transcribe separately and join by time. `audio` must be a WAV file. Needs no loaded model, runs on the CPU
+   * and never waits behind a transcription. An stt-server older than this endpoint answers 404, which surfaces as a
+   * {@link ServerError}. The server does the clustering; `clusterSpeakers` is the same algorithm for embeddings you hold.
+   */
+  async diarize(audio: Blob | ArrayBuffer | Uint8Array, options: DiarizationOptions = {}): Promise<DiarizationResult> {
+    await this.ensureVersion();
+    const known: Array<KnownSpeakerEmbedding | KnownSpeakerReference> = options.knownSpeakers ?? [];
+    const references = known.filter(isReference);
+    if (references.length > 0 && references.length < known.length) {
+      throw new TypeError("knownSpeakers takes embeddings or reference clips, not both.");
+    }
+    // A clip travels as a data URL, which is how OpenAI takes `known_speaker_references[]`.
+    const clips = await Promise.all(
+      references.map(async ({ audio: clip }) => {
+        const bytes = new Uint8Array(await toBlob(clip).arrayBuffer());
+        return `data:audio/wav;base64,${encodeBase64(bytes)}`;
+      }),
+    );
+    return (await this.postForm(
+      "/v1/audio/diarize",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        if (options.segments) {
+          form.append("segments", JSON.stringify(options.segments.map(({ start, end }) => ({ start, end }))));
+        }
+        if (options.threshold !== undefined) form.append("threshold", String(options.threshold));
+        if (options.maxSpeakers !== undefined) form.append("max_speakers", String(options.maxSpeakers));
+        for (const { name } of known) form.append("known_speaker_names[]", name);
+        for (const clip of clips) form.append("known_speaker_references[]", clip);
+        for (const speaker of known) {
+          if (!isReference(speaker)) form.append("known_speaker_embeddings[]", encodeFloat32(speaker.embedding));
+        }
+        return form;
+      },
+      options.signal,
+    )) as DiarizationResult;
   }
 
   /**

@@ -27,9 +27,19 @@ export type {
   ModelCapabilities,
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  SubtitleFormat,
+  SubtitleRequest,
   SpeechDetectionOptions,
   SpeechDetectionResult,
   SpeechSegment,
+  DiarizationOptions,
+  DiarizationResult,
+  DiarizedSegment,
+  KnownSpeakerEmbedding,
+  KnownSpeakerReference,
+  SpeakerEmbeddingOptions,
+  SpeakerEmbeddingResult,
+  SpeakerSegment,
   TranscriptionSegment,
   TranscriptionResult,
   SessionState,
@@ -54,6 +64,9 @@ export {
   ServerVersionError,
 } from "./errors";
 export type { SttErrorOptions } from "./errors";
+
+export { cosineSimilarity, matchSpeaker, clusterSpeakers } from "./speakers";
+export type { SpeakerProfile, SpeakerMatch, ClusterOptions } from "./speakers";
 
 export type { SttProvider } from "./provider";
 export { createProvider } from "./factory";

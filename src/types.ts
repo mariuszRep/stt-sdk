@@ -212,6 +212,17 @@ export interface BatchTranscriptionRequest {
   signal?: AbortSignal;
 }
 
+/** A subtitle file format stt-server renders from the segment timestamps, named as in OpenAI's `response_format`. */
+export type SubtitleFormat = "srt" | "vtt";
+
+/**
+ * Adds to a batch request: ask for a subtitle file instead of a {@link TranscriptionResult}. `SttServerProvider`'s
+ * `transcribe` and `translate` then return the file's text. `wordTimestamps` is ignored.
+ */
+export interface SubtitleRequest {
+  responseFormat: SubtitleFormat;
+}
+
 export interface TranscriptionSegment {
   text: string;
   startMs: number;
@@ -271,6 +282,84 @@ export interface SpeechDetectionResult {
   speechRatio: number;
   /** Length of the audio in seconds. */
   duration: number;
+}
+
+// ── Speaker embeddings ───────────────────────────────────────────────────
+
+/** Settings for {@link SttServerProvider.embedSpeakers}. */
+export interface SpeakerEmbeddingOptions {
+  filename?: string;
+  /**
+   * The stretches of the audio to fingerprint, in seconds. Left out, the server runs its own speech detection and
+   * embeds every speech segment it finds. A segment shorter than 0.5 s gets no embedding.
+   */
+  segments?: SpeechSegment[];
+  signal?: AbortSignal;
+}
+
+/** The voice fingerprint of one segment: `embedding` is null when the segment was too short to describe a voice. */
+export interface SpeakerSegment extends SpeechSegment {
+  embedding: number[] | null;
+}
+
+export interface SpeakerEmbeddingResult {
+  /** The embedding space. Vectors from different models never compare; store it beside saved profiles. */
+  model: string;
+  /** Length of every embedding. */
+  dim: number;
+  /** Length of the audio in seconds. */
+  duration: number;
+  segments: SpeakerSegment[];
+}
+
+// ── Diarization ──────────────────────────────────────────────────────────
+
+/** A voice the caller already has a profile for, given as an embedding from `embedSpeakers`. */
+export interface KnownSpeakerEmbedding {
+  /** What segments of this voice are labelled with (1-64 characters, distinct). */
+  name: string;
+  /** An embedding of the same model the server uses ({@link DiarizationResult.model} names it). */
+  embedding: ArrayLike<number>;
+}
+
+/** A voice the caller has a recording of: a WAV clip of 2-10 s of that person speaking, which the server embeds. */
+export interface KnownSpeakerReference {
+  name: string;
+  audio: Blob | ArrayBuffer | Uint8Array;
+}
+
+/** Settings for {@link SttServerProvider.diarize}. */
+export interface DiarizationOptions {
+  filename?: string;
+  /** The speech to label, in seconds. Left out, the server runs its own speech detection. */
+  segments?: SpeechSegment[];
+  /** Two voices are one speaker at this cosine similarity or more (0.05-0.95). Default 0.4. */
+  threshold?: number;
+  /** At most this many speakers (1-26), merging voices past `threshold` if need be. Default 26. */
+  maxSpeakers?: number;
+  /**
+   * Up to 26 known voices to name, by embedding or (at most four) by reference clip; the two kinds do not mix. A
+   * speaker whose voice matches (at `threshold`) gets the name, any other "A", "B", ... in order of appearance.
+   */
+  knownSpeakers?: KnownSpeakerEmbedding[] | KnownSpeakerReference[];
+  signal?: AbortSignal;
+}
+
+/** Who spoke between `start` and `end`: the shape of an element of OpenAI's `diarized_json` segments, without text. */
+export interface DiarizedSegment extends SpeechSegment {
+  type: "transcript.text.segment";
+  id: string;
+  /** "A", "B", ... or the name of a known speaker. */
+  speaker: string;
+}
+
+export interface DiarizationResult {
+  /** The engine that produced the labels. */
+  model: string;
+  /** Length of the audio in seconds. */
+  duration: number;
+  /** In time order; a segment under 0.5 s is too short to attribute and is left out. There is no text. */
+  segments: DiarizedSegment[];
 }
 
 // ── Streaming session ────────────────────────────────────────────────────
