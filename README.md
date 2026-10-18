@@ -92,6 +92,19 @@ const { segments, speechRatio, duration } = await provider.detectSpeech(file, { 
 // segments: [{ start: 0.26, end: 2.94 }, ...] in seconds
 ```
 
+Voice fingerprints of a finished recording (CAM++ running in the server, no model needed; an stt-server extension, WAV
+audio). Each segment gets a unit-length embedding; segments under 0.5 s get `null`. Left out, `segments` come from the
+server's own speech detection. The pure helpers compare embeddings of one `model` (store it beside saved profiles):
+
+```ts
+import { clusterSpeakers, cosineSimilarity, matchSpeaker } from "@open-vibe-ai/stt-sdk";
+
+const { model, segments } = await provider.embedSpeakers(file, { segments: [{ start: 0, end: 4.2 }] });
+const labels = clusterSpeakers(segments.map((s) => s.embedding), { threshold: 0.4, maxSpeakers: 4 }); // [0, 1, 0, ...]
+const who = matchSpeaker(segments[0].embedding!, savedProfiles, 0.4); // { profile, similarity } or null
+const alike = cosineSimilarity(a, b); // -1..1; about 0.4 and up is the same voice with this model
+```
+
 A model's `capabilities.translationTargets` lists the languages it translates into; a translating model that does
 not report a list translates into English only. `translate()` and `createStream({ targetLanguage })` reject with
 `UnsupportedCapabilityError` for a target the model does not offer.
@@ -154,7 +167,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`), speaker embeddings (`embedSpeakers()`, `POST /v1/audio/embeddings`, with `cosineSimilarity`/`matchSpeaker`/`clusterSpeakers`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw

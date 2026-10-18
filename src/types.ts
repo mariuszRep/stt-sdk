@@ -273,6 +273,34 @@ export interface SpeechDetectionResult {
   duration: number;
 }
 
+// ── Speaker embeddings ───────────────────────────────────────────────────
+
+/** Settings for {@link SttServerProvider.embedSpeakers}. */
+export interface SpeakerEmbeddingOptions {
+  filename?: string;
+  /**
+   * The stretches of the audio to fingerprint, in seconds. Left out, the server runs its own speech detection and
+   * embeds every speech segment it finds. A segment shorter than 0.5 s gets no embedding.
+   */
+  segments?: SpeechSegment[];
+  signal?: AbortSignal;
+}
+
+/** The voice fingerprint of one segment: `embedding` is null when the segment was too short to describe a voice. */
+export interface SpeakerSegment extends SpeechSegment {
+  embedding: number[] | null;
+}
+
+export interface SpeakerEmbeddingResult {
+  /** The embedding space. Vectors from different models never compare; store it beside saved profiles. */
+  model: string;
+  /** Length of every embedding. */
+  dim: number;
+  /** Length of the audio in seconds. */
+  duration: number;
+  segments: SpeakerSegment[];
+}
+
 // ── Streaming session ────────────────────────────────────────────────────
 
 export type SessionState = "idle" | "starting" | "active" | "stopping" | "closed";

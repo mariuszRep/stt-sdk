@@ -717,3 +717,130 @@ describe("SttServerProvider — detectSpeech", () => {
     await expect(provider.detectSpeech(new Uint8Array([1]))).rejects.toBeInstanceOf(ConnectionError);
   });
 });
+
+describe("SttServerProvider — embedSpeakers", () => {
+  const embedding = (values: number[]) => Buffer.from(new Float32Array(values).buffer).toString("base64");
+  const EMBEDDING_RESPONSE = {
+    model: "campplus-voxceleb-v1",
+    dim: 4,
+    duration: 6.5,
+    segments: [
+      { start: 0.25, end: 2.5, embedding: embedding([0.5, -0.5, 0.25, 0.75]) },
+      { start: 3, end: 3.25, embedding: null },
+    ],
+  };
+
+  it("posts the audio and the segments to /v1/audio/embeddings and decodes the base64 embeddings", async () => {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/audio/embeddings": () => jsonResponse(EMBEDDING_RESPONSE),
+      },
+      captures,
+    );
+
+    const result = await provider.embedSpeakers(new Uint8Array([1, 2, 3]), {
+      segments: [
+        { start: 0.25, end: 2.5 },
+        { start: 3, end: 3.25 },
+      ],
+    });
+
+    expect(result).toEqual({
+      model: "campplus-voxceleb-v1",
+      dim: 4,
+      duration: 6.5,
+      segments: [
+        { start: 0.25, end: 2.5, embedding: [0.5, -0.5, 0.25, 0.75] },
+        { start: 3, end: 3.25, embedding: null },
+      ],
+    });
+    const call = captures.find((c) => c.url.endsWith("/v1/audio/embeddings"))!;
+    expect(call.init!.method).toBe("POST");
+    expect((call.init!.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    const form = call.init!.body as FormData;
+    expect((form.get("file") as File).name).toBe("recording.wav");
+    expect(JSON.parse(form.get("segments") as string)).toEqual([
+      { start: 0.25, end: 2.5 },
+      { start: 3, end: 3.25 },
+    ]);
+    expect(form.get("encoding_format")).toBe("base64");
+    // No model is involved, so the model list is never fetched.
+    expect(captures.some((c) => c.url.endsWith("/v1/models"))).toBe(false);
+  });
+
+  it("leaves segments out so the server runs its own speech detection, and sends only start and end", async () => {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/audio/embeddings": () => jsonResponse({ ...EMBEDDING_RESPONSE, segments: [] }),
+      },
+      captures,
+    );
+
+    await provider.embedSpeakers(new Blob(["x"]), { filename: "clip.wav" });
+    await provider.embedSpeakers(new Blob(["x"]), { segments: [{ start: 1, end: 2, speaker: "A" } as never] });
+
+    const forms = captures.filter((c) => c.url.endsWith("/v1/audio/embeddings")).map((c) => c.init!.body as FormData);
+    expect((forms[0]!.get("file") as File).name).toBe("clip.wav");
+    expect(forms[0]!.has("segments")).toBe(false);
+    expect(JSON.parse(forms[1]!.get("segments") as string)).toEqual([{ start: 1, end: 2 }]);
+  });
+
+  it("also takes plain float arrays", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/embeddings": () =>
+        jsonResponse({ ...EMBEDDING_RESPONSE, segments: [{ start: 0, end: 1, embedding: [1, 0, 0, 0] }] }),
+    });
+
+    const result = await provider.embedSpeakers(new Uint8Array([1]));
+
+    expect(result.segments[0]!.embedding).toEqual([1, 0, 0, 0]);
+  });
+
+  it("passes the server's invalid_request_error through with its code and status", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/embeddings": () =>
+        jsonResponse({ error: { code: "invalid_request_error", message: "segments must be a JSON array" } }, 400),
+    });
+
+    const err = await provider.embedSpeakers(new Uint8Array([1]), { segments: [] }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(ServerError);
+    expect(err.code).toBe("invalid_request_error");
+    expect(err.status).toBe(400);
+  });
+
+  it("maps an unauthorized answer to UnauthorizedError and an older server's 404 to ServerError", async () => {
+    const unauthorized = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/embeddings": () => jsonResponse({ error: { code: "unauthorized", message: "no" } }, 401),
+    });
+    await expect(unauthorized.embedSpeakers(new Uint8Array([1]))).rejects.toBeInstanceOf(UnauthorizedError);
+
+    const older = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/embeddings": () => jsonResponse({ error: { code: "not_found", message: "no route" } }, 404),
+    });
+    const err = await older.embedSpeakers(new Uint8Array([1])).catch((e) => e);
+    expect(err).toBeInstanceOf(ServerError);
+    expect(err.status).toBe(404);
+  });
+
+  it("wraps a network failure as ConnectionError", async () => {
+    const provider = new SttServerProvider({
+      baseUrl: "http://127.0.0.1:54321",
+      token: "test-token",
+      fetchImpl: vi.fn(async (input: FetchInput) => {
+        if (String(input).endsWith("/health")) return jsonResponse(HEALTH_OK);
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch,
+    });
+
+    await expect(provider.embedSpeakers(new Uint8Array([1]))).rejects.toBeInstanceOf(ConnectionError);
+  });
+});

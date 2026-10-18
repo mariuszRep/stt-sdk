@@ -5,6 +5,8 @@ import type {
   ModelCapabilities,
   ModelInfo,
   ProviderCapability,
+  SpeakerEmbeddingOptions,
+  SpeakerEmbeddingResult,
   SpeechDetectionOptions,
   SpeechDetectionResult,
   StreamConfig,
@@ -127,11 +129,26 @@ interface ServerTranscriptionResponse {
   x_diagnostics?: Record<string, unknown>;
 }
 
+interface ServerSpeakerEmbeddingResponse {
+  model: string;
+  dim: number;
+  duration: number;
+  segments: Array<{ start: number; end: number; embedding: string | number[] | null }>;
+}
+
 interface ServerSpeechDetectionResponse {
   duration: number;
   speech_seconds: number;
   speech_ratio: number;
   segments: Array<{ start: number; end: number }>;
+}
+
+/** Decodes base64 of little-endian f32 bytes (the server's `encoding_format: "base64"`). */
+function decodeFloat32(encoded: string): number[] {
+  const binary = atob(encoded);
+  const view = new DataView(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) view.setUint8(i, binary.charCodeAt(i));
+  return Array.from({ length: binary.length / 4 }, (_, i) => view.getFloat32(i * 4, true));
 }
 
 /**
@@ -558,6 +575,44 @@ export class SttServerProvider implements SttProvider {
       options.signal,
     )) as ServerSpeechDetectionResponse;
     return { segments: body.segments, speechRatio: body.speech_ratio, duration: body.duration };
+  }
+
+  /**
+   * Voice fingerprints of a finished recording (`POST /v1/audio/embeddings`, an stt-server extension): one embedding per
+   * segment of `options.segments`, or per speech segment the server's own detection finds. The embeddings are unit
+   * vectors of one model (see {@link SpeakerEmbeddingResult.model}); compare them with `cosineSimilarity`, `matchSpeaker`
+   * and `clusterSpeakers`. `audio` must be a WAV file, as for {@link transcribe}. Needs no loaded model and never waits
+   * behind a transcription. An stt-server older than this endpoint answers 404, which surfaces as a {@link ServerError}.
+   */
+  async embedSpeakers(
+    audio: Blob | ArrayBuffer | Uint8Array,
+    options: SpeakerEmbeddingOptions = {},
+  ): Promise<SpeakerEmbeddingResult> {
+    await this.ensureVersion();
+    const body = (await this.postForm(
+      "/v1/audio/embeddings",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        if (options.segments) {
+          form.append("segments", JSON.stringify(options.segments.map(({ start, end }) => ({ start, end }))));
+        }
+        // Base64 of the f32 bytes is a third of the size of the JSON numbers.
+        form.append("encoding_format", "base64");
+        return form;
+      },
+      options.signal,
+    )) as ServerSpeakerEmbeddingResponse;
+    return {
+      model: body.model,
+      dim: body.dim,
+      duration: body.duration,
+      segments: body.segments.map(({ start, end, embedding }) => ({
+        start,
+        end,
+        embedding: typeof embedding === "string" ? decodeFloat32(embedding) : embedding,
+      })),
+    };
   }
 
   /**

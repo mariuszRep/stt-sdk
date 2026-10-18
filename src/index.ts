@@ -30,6 +30,9 @@ export type {
   SpeechDetectionOptions,
   SpeechDetectionResult,
   SpeechSegment,
+  SpeakerEmbeddingOptions,
+  SpeakerEmbeddingResult,
+  SpeakerSegment,
   TranscriptionSegment,
   TranscriptionResult,
   SessionState,
@@ -54,6 +57,9 @@ export {
   ServerVersionError,
 } from "./errors";
 export type { SttErrorOptions } from "./errors";
+
+export { cosineSimilarity, matchSpeaker, clusterSpeakers } from "./speakers";
+export type { SpeakerProfile, SpeakerMatch, ClusterOptions } from "./speakers";
 
 export type { SttProvider } from "./provider";
 export { createProvider } from "./factory";
