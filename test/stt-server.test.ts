@@ -468,6 +468,23 @@ describe("SttServerProvider — translation targets", () => {
     expect(await targets(translating(["en"], "unknown"))).toBeUndefined();
   });
 
+  it("lets a model translate that only the catalog claims translates, English only", async () => {
+    // The catalog view of a model that is not loaded: unverified, and it does not say into what.
+    const claimed = { status: "unknown", model_claim: true, target_languages: null };
+    const caps = (await providerFor(claimed).listModels())[0]!.capabilities!;
+    expect(caps.translation).toBe(true);
+    expect(caps.translationTargets).toBeUndefined();
+    const captures: Capture[] = [];
+    const provider = providerFor(claimed, captures);
+    await provider.translate({ file: audio });
+    expect(posted(captures)).toHaveLength(1);
+    await expect(provider.translate({ file: audio, targetLanguage: "de" })).rejects.toBeInstanceOf(
+      UnsupportedCapabilityError,
+    );
+    const denied = { status: "unsupported", model_claim: false, target_languages: [] };
+    expect((await providerFor(denied).listModels())[0]!.capabilities!.translation).toBe(false);
+  });
+
   it("sends target_language for a target the model offers", async () => {
     const captures: Capture[] = [];
     const provider = providerFor(translating(["en", "de"]), captures);

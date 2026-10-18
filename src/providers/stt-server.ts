@@ -152,15 +152,16 @@ function deriveCapabilities(
   raw: (Record<string, ControlCapability> & { language_hint?: LanguageHintCapability }) | undefined,
 ): ModelCapabilities {
   const supported = (control?: ControlCapability): boolean => control?.status === "supported";
-  const translationTargets = supported(raw?.translation) ? raw?.translation?.target_languages : undefined;
+  const translates = confirmedOrClaimed(raw?.translation);
+  const translationTargets = translates ? raw?.translation?.target_languages : undefined;
   return {
     prompt: supported(raw?.prompt),
     languageHint: supported(raw?.language_hint),
     languageDetect: supported(raw?.language_detect),
-    translation: supported(raw?.translation),
+    translation: translates,
     // Only a non-empty list is a real answer: `null` is "not advertised" (English only) and `[]` is "none".
     ...(translationTargets?.length ? { translationTargets } : {}),
-    streaming: canStream(raw?.streaming),
+    streaming: confirmedOrClaimed(raw?.streaming),
     temperature: supported(raw?.temperature),
     timestamps: {
       // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
@@ -172,12 +173,13 @@ function deriveCapabilities(
 }
 
 /**
- * Whether a model can transcribe live. Unlike the other controls, an unconfirmed (`"unknown"`) status counts when the
- * catalog claims streaming: nothing is sent that a model could reject, and a model that cannot stream is refused with
- * `streaming_unsupported` when the stream opens, which the caller answers by transcribing in batch. Waiting for the
- * engine to confirm would make the first recording after a start always batch.
+ * Whether a model can do what the control stands for (stream live, translate). Unlike the other controls, an
+ * unconfirmed (`"unknown"`) status counts when the catalog claims it: nothing is sent that a model could reject, and a
+ * model that cannot is refused by the server (`streaming_unsupported`, `unsupported_capability`), which the caller
+ * answers by transcribing in batch or refreshing the model list. Waiting for the engine to confirm would make the first
+ * recording after a start always batch, and a translation setting on a model that is not loaded yet unusable.
  */
-function canStream(control?: ControlCapability): boolean {
+function confirmedOrClaimed(control?: ControlCapability): boolean {
   return control?.status === "supported" || (control?.status === "unknown" && control.model_claim === true);
 }
 
