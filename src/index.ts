@@ -27,6 +27,9 @@ export type {
   ModelCapabilities,
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  SpeechDetectionOptions,
+  SpeechDetectionResult,
+  SpeechSegment,
   TranscriptionSegment,
   TranscriptionResult,
   SessionState,
@@ -62,7 +65,7 @@ export {
   WhisperCppProvider,
   OpenAIProvider,
   GroqProvider,
-  SttServerNextProvider,
+  SttServerProvider,
 } from "./providers";
 export type {
   LocalRuntimeOptions,
@@ -71,5 +74,5 @@ export type {
   WhisperCppOptions,
   OpenAIProviderOptions,
   GroqProviderOptions,
-  SttServerNextProviderOptions,
+  SttServerProviderOptions,
 } from "./providers";

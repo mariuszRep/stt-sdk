@@ -41,6 +41,11 @@ export interface PartialEvent {
   text: string;
   startMs: number;
   endMs: number;
+  /** stt-server's live streaming: `text` is `committed` (final, append-only) followed by `tentative` (may still change). */
+  committed?: string;
+  tentative?: string;
+  /** Counts up with every change of `committed` or `tentative`. */
+  revision?: number;
 }
 
 export interface FinalEvent {
@@ -86,6 +91,12 @@ export interface StreamConfig {
   sampleRate: number;
   channels: number;
   prompt?: string;
+  /**
+   * Translate each turn into this language (an stt-server extension). Needs a model with `capabilities.translation`;
+   * a model that cannot stream translates per turn, so the text arrives whole after `stop()` instead of while
+   * speaking. Unset: plain transcription.
+   */
+  targetLanguage?: string;
   auth?: string;
 }
 
@@ -168,6 +179,13 @@ export interface ModelCapabilities {
   /** Whether this model can auto-detect the spoken language. */
   languageDetect?: boolean;
   translation?: boolean;
+  /**
+   * The languages this model translates into, where it reports them. Absent for a translating model that does not
+   * advertise its targets: such a model translates into English only.
+   */
+  translationTargets?: string[];
+  /** Whether this model can transcribe live audio through `createStream`. */
+  streaming?: boolean;
   temperature?: boolean;
   timestamps?: {
     segment?: boolean;
@@ -211,12 +229,49 @@ export interface TranscriptionResult {
   language?: string;
   durationMs?: number;
   segments?: TranscriptionSegment[];
-  /** Raw server-side diagnostics (e.g. stt-server-next's `x_diagnostics`), passed through as-is. */
+  /** Raw server-side diagnostics (e.g. stt-server's `x_diagnostics`), passed through as-is. */
   diagnostics?: Record<string, unknown>;
 }
 
-/** Optional request for translating speech in another language to English. */
-export interface BatchTranslationRequest extends BatchTranscriptionRequest {}
+/** Optional request for translating speech in another language (English unless `targetLanguage` says otherwise). */
+export interface BatchTranslationRequest extends BatchTranscriptionRequest {
+  /**
+   * The language to translate into, one of the model's `capabilities.translationTargets` (English only when the model
+   * reports none). Defaults to English, which is all OpenAI's translations endpoint offers; other targets are an
+   * stt-server extension.
+   */
+  targetLanguage?: string;
+}
+
+// ── Offline speech detection ─────────────────────────────────────────────
+
+/** Settings for {@link SttServerProvider.detectSpeech}; anything left out takes the server's default. */
+export interface SpeechDetectionOptions {
+  filename?: string;
+  /** Speech probability from which a frame counts as speech, 0.05–0.95 (server default 0.5). */
+  threshold?: number;
+  /** Segments shorter than this are dropped (server default 250). */
+  minSpeechMs?: number;
+  /** A pause shorter than this does not split a segment (server default 100). */
+  minSilenceMs?: number;
+  /** Padding added to both ends of every segment (server default 30). */
+  speechPadMs?: number;
+  signal?: AbortSignal;
+}
+
+/** A stretch of speech, in seconds from the start of the audio. */
+export interface SpeechSegment {
+  start: number;
+  end: number;
+}
+
+export interface SpeechDetectionResult {
+  segments: SpeechSegment[];
+  /** The share of the audio inside segments, 0–1. */
+  speechRatio: number;
+  /** Length of the audio in seconds. */
+  duration: number;
+}
 
 // ── Streaming session ────────────────────────────────────────────────────
 

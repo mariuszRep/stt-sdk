@@ -55,12 +55,12 @@ const session = await provider.createStream({
 });
 ```
 
-### stt-server-next — used exactly like a cloud provider
+### stt-server — used exactly like a cloud provider
 
 ```ts
-import { SttServerNextProvider } from "@open-vibe-ai/stt-sdk";
+import { SttServerProvider } from "@open-vibe-ai/stt-sdk";
 
-const provider = new SttServerNextProvider({
+const provider = new SttServerProvider({
   baseUrl: "http://127.0.0.1:54321", // app discovers this; the SDK does no discovery
   token: authToken,                  // from <data-dir>/auth.token or user.token
 });
@@ -79,11 +79,26 @@ const result = await provider.transcribe({
 
 // Translation to English, where the chosen model supports it:
 const translated = await provider.translate({ file, model: "whisper-tiny" });
+
+// Another target language, when the model offers it (an stt-server extension to OpenAI's English-only endpoint):
+const german = await provider.translate({ file, model: "canary", targetLanguage: "de" });
 ```
 
-`SttServerNextProvider` connects with an address and a token like a cloud provider —
+Where speech is in a finished recording (Silero VAD running in the server, no model needed; an stt-server extension,
+WAV audio; live detection stays in the client):
+
+```ts
+const { segments, speechRatio, duration } = await provider.detectSpeech(file, { threshold: 0.5, minSpeechMs: 250 });
+// segments: [{ start: 0.26, end: 2.94 }, ...] in seconds
+```
+
+A model's `capabilities.translationTargets` lists the languages it translates into; a translating model that does
+not report a list translates into English only. `translate()` and `createStream({ targetLanguage })` reject with
+`UnsupportedCapabilityError` for a target the model does not offer.
+
+`SttServerProvider` connects with an address and a token like a cloud provider —
 no discovery, install, model management, or server lifecycle. It checks `GET /health`
-on first use and refuses clearly if the server isn't `stt-server-next` or its
+on first use and refuses clearly if the server isn't `stt-server` or its
 `api_level` is too old. Before sending `prompt`/`language`/`temperature`/timestamp
 fields, it checks the chosen model's capabilities (from `GET /v1/models`, cached and
 refreshed on a stale-capability error) and omits anything the model doesn't support —
@@ -94,6 +109,18 @@ mapped to a stable `code`/`retryable` hierarchy (`ServerNotReadyError`,
 `AdminRequiredError`, `UnauthorizedError`, `NetworkNotPrivateError`,
 `ServerVersionError`); an unrecognized server error code still surfaces with its
 original `code` rather than being swallowed.
+
+Live transcription: a model whose `ModelInfo.capabilities.streaming` is `true` can be
+streamed with `provider.createStream({ model, language, encoding: "pcm_s16le", sampleRate: 16000, channels: 1 })`,
+over the server's `WS /v1/realtime?intent=transcription`. `sendAudio()` takes PCM16 mono;
+`partial` events carry `committed` (final, append-only) and `tentative` (may still change)
+text plus a `revision`; `stop()` commits and resolves after the `final` event. A model
+that does not stream rejects with `UnsupportedCapabilityError` — fall back to `transcribe()`.
+With `targetLanguage` the turns are translated instead, which needs `capabilities.translation` but not streaming: a model
+that cannot stream translates the whole turn when `stop()` commits it, so the `final` event arrives without `partial`s.
+The server runs one stream at a time and cannot transcribe a batch with the streaming
+model meanwhile. A browser `WebSocket` cannot send the bearer header, so a webview passes
+`webSocketFactory`; Node needs nothing.
 
 ### From a server-issued runtime descriptor
 
@@ -127,7 +154,7 @@ const provider = createProvider(descriptor);
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
 | `OpenAIProvider` | seam (typed, not implemented) | — |
 | `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerNextProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw
@@ -174,6 +201,23 @@ npm test
 npm run build
 npm run verify:consumer   # pack + install into a blank consumer fixture + typecheck
 ```
+
+## Migrating from 0.3.x (`stt-server-next` renamed to `stt-server`)
+
+0.3.5 is a breaking rename; there is no deprecated alias. The server formerly called
+`stt-server-next` is now `stt-server` (releases v0.3.0+).
+
+| 0.3.4 and earlier | 0.3.5 |
+|---|---|
+| `SttServerNextProvider` | `SttServerProvider` |
+| `SttServerNextProviderOptions` | `SttServerProviderOptions` |
+| provider id / capability id `"stt-server-next"` | `"stt-server"` |
+| capability `displayName` `"STT Server Next"` | `"STT Server"` |
+| `ServerVersionError` code `"not_stt_server_next"` | `"not_stt_server"` |
+
+Consumers that persisted the provider id (settings, history) must migrate
+`"stt-server-next"` to `"stt-server"`. `/health` must now report `service: "stt-server"`;
+servers older than 0.3.0 that report `stt-server-next` are rejected with `not_stt_server`.
 
 ## Reconcile note
 

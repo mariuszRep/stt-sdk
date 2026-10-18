@@ -5,6 +5,8 @@ import type {
   ModelCapabilities,
   ModelInfo,
   ProviderCapability,
+  SpeechDetectionOptions,
+  SpeechDetectionResult,
   StreamConfig,
   StreamSession,
   TranscriptionResult,
@@ -12,7 +14,8 @@ import type {
   TranscriptWord,
 } from "../types";
 import type { TransportDeps } from "../transport";
-import { resolveFetch, toBlob } from "../transport";
+import { resolveFetch, resolveWebSocket, toBlob } from "../transport";
+import { SttServerStreamSession, type WebSocketFactory } from "./stt-server-stream";
 import {
   AdminRequiredError,
   ApiError,
@@ -29,22 +32,28 @@ import {
   UnsupportedCapabilityError,
 } from "../errors";
 
-export interface SttServerNextProviderOptions extends TransportDeps {
-  /** Base URL of the stt-server-next instance, e.g. `http://127.0.0.1:54321`. */
+export interface SttServerProviderOptions extends TransportDeps {
+  /** Base URL of the stt-server instance, e.g. `http://127.0.0.1:54321`. */
   baseUrl: string;
   /** Bearer token (admin or user token — see the server's client contract, section 3). */
   token: string;
+  /**
+   * How the live socket is opened (`createStream`). The default passes the bearer header to the platform's
+   * `WebSocket` (Node); a browser or webview cannot set it and supplies a factory of its own.
+   */
+  webSocketFactory?: WebSocketFactory;
 }
 
 /** Minimum `api_level` (see `/health`) this adapter requires. */
 const MIN_API_LEVEL = 1;
-// The server was called stt-server-next before 0.3.0; from 0.3.0 it is "stt-server".
-// Both names are the same product, so either passes the identity check.
-const EXPECTED_SERVICES = ["stt-server", "stt-server-next"];
-const EXPECTED_SERVICE = EXPECTED_SERVICES[0];
+const EXPECTED_SERVICE = "stt-server";
 
 interface ControlCapability {
   status?: "supported" | "unsupported" | "unknown" | string;
+  /** What the catalog claims for the model, before the loaded engine has confirmed it (an `"unknown"` status). */
+  model_claim?: unknown;
+  /** `translation` only: the languages the model translates into; `null` when it translates but does not say. */
+  target_languages?: string[] | null;
 }
 
 /**
@@ -68,7 +77,7 @@ interface ServerModelEntry {
   owned_by?: string;
   default?: boolean;
   capabilities?: Record<string, ControlCapability> & { language_hint?: LanguageHintCapability };
-  /** Top-level convenience fields added in stt-server-next 0.1.1. */
+  /** Top-level convenience fields added in stt-server 0.1.1. */
   languages?: string[];
   language_detect?: boolean;
 }
@@ -118,9 +127,16 @@ interface ServerTranscriptionResponse {
   x_diagnostics?: Record<string, unknown>;
 }
 
+interface ServerSpeechDetectionResponse {
+  duration: number;
+  speech_seconds: number;
+  speech_ratio: number;
+  segments: Array<{ start: number; end: number }>;
+}
+
 /**
  * Derives the SDK's simple supported/not-supported {@link ModelCapabilities}
- * booleans from stt-server-next's richer per-control status values
+ * booleans from stt-server's richer per-control status values
  * (`"supported" | "unsupported" | "unknown"`, see client-contract.md §4.1).
  *
  * Rule: a control counts as supported only when the server explicitly says
@@ -136,11 +152,18 @@ function deriveCapabilities(
   raw: (Record<string, ControlCapability> & { language_hint?: LanguageHintCapability }) | undefined,
 ): ModelCapabilities {
   const supported = (control?: ControlCapability): boolean => control?.status === "supported";
+  const translates = confirmedOrClaimed(raw?.translation);
+  const translationTargets = translates ? raw?.translation?.target_languages : undefined;
   return {
     prompt: supported(raw?.prompt),
-    languageHint: supported(raw?.language_hint),
+    // Like translation, a model that is not loaded yet reports the languages it claims (`unknown` status): that is
+    // enough to send the hint, which the server refuses for a model that cannot take it.
+    languageHint: supported(raw?.language_hint) || claimsLanguages(raw?.language_hint),
     languageDetect: supported(raw?.language_detect),
-    translation: supported(raw?.translation),
+    translation: translates,
+    // Only a non-empty list is a real answer: `null` is "not advertised" (English only) and `[]` is "none".
+    ...(translationTargets?.length ? { translationTargets } : {}),
+    streaming: confirmedOrClaimed(raw?.streaming),
     temperature: supported(raw?.temperature),
     timestamps: {
       // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
@@ -152,14 +175,57 @@ function deriveCapabilities(
 }
 
 /**
+ * Whether a model can do what the control stands for (stream live, translate). Unlike the other controls, an
+ * unconfirmed (`"unknown"`) status counts when the catalog claims it: nothing is sent that a model could reject, and a
+ * model that cannot is refused by the server (`streaming_unsupported`, `unsupported_capability`), which the caller
+ * answers by transcribing in batch or refreshing the model list. Waiting for the engine to confirm would make the first
+ * recording after a start always batch, and a translation setting on a model that is not loaded yet unusable.
+ */
+function confirmedOrClaimed(control?: ControlCapability): boolean {
+  return control?.status === "supported" || (control?.status === "unknown" && control.model_claim === true);
+}
+
+/** Whether an unconfirmed `language_hint` carries a list of languages the catalog claims the model understands. */
+function claimsLanguages(control?: LanguageHintCapability): boolean {
+  return control?.status === "unknown" && Array.isArray(control.model_claim) && control.model_claim.length > 0;
+}
+
+/**
  * The model's supported language codes: prefers the top-level `languages`
- * field (stt-server-next 0.1.1+), falling back to `capabilities.language_hint`'s
+ * field (stt-server 0.1.1+), falling back to `capabilities.language_hint`'s
  * live `languages` or catalog `model_claim` (see {@link LanguageHintCapability}).
  */
 function deriveLanguages(entry: ServerModelEntry): string[] | undefined {
   if (Array.isArray(entry.languages)) return entry.languages;
   const hint = entry.capabilities?.language_hint;
   return hint?.languages ?? hint?.extra?.languages ?? hint?.model_claim ?? hint?.extra?.model_claim;
+}
+
+/** The primary language subtag: `en-US` and `en_us` are both `en`. */
+function baseLanguage(code: string): string {
+  return code.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+}
+
+/**
+ * Throws unless `model` can translate into `target`. A translating model that reports no target list is English-only.
+ * The server transcribes instead when the source language already is the target, so that case is not refused here.
+ */
+function assertCanTranslate(
+  model: string,
+  caps: ModelCapabilities | undefined,
+  target: string,
+  source: string | null | undefined,
+): void {
+  if (!caps?.translation) {
+    throw new UnsupportedCapabilityError(`Model "${model}" does not support translation.`);
+  }
+  if (source && baseLanguage(source) === baseLanguage(target)) return;
+  const offered = caps.translationTargets ?? ["en"];
+  if (!offered.includes(target)) {
+    throw new UnsupportedCapabilityError(
+      `Model "${model}" cannot translate into "${target}" (it offers: ${offered.join(", ")}).`,
+    );
+  }
 }
 
 function mapModelEntry(entry: ServerModelEntry): ModelInfo {
@@ -180,41 +246,45 @@ function mapModelEntry(entry: ServerModelEntry): ModelInfo {
   };
 }
 
-const SERVER_NEXT_CAPABILITY: ProviderCapability = {
-  id: "stt-server-next",
-  displayName: "STT Server Next",
+const STT_SERVER_CAPABILITY: ProviderCapability = {
+  id: "stt-server",
+  displayName: "STT Server",
   transport: "http",
   requiresAudioInput: true,
   privacy: "local",
-  supportsPartials: false,
+  // Live transcription exists for the models whose `capabilities.streaming` is supported (`ModelInfo`); the
+  // provider itself can open the stream for them.
+  supportsPartials: true,
   supportsWordTimestamps: true,
   supportsLanguageHint: true,
-  supportsStreaming: false,
+  supportsStreaming: true,
   supportsBatch: true,
   available: true,
 };
 
 /**
- * Adapter for `stt-server-next`, used exactly like a cloud provider: connect
+ * Adapter for `stt-server`, used exactly like a cloud provider: connect
  * with a base URL and a token, list callable models, transcribe/translate
  * naming a model per request. No model management, discovery, install, or
  * server lifecycle — that stays the app's job via the server's own APIs.
  */
-export class SttServerNextProvider implements SttProvider {
-  readonly id = "stt-server-next";
-  readonly capability: ProviderCapability = SERVER_NEXT_CAPABILITY;
+export class SttServerProvider implements SttProvider {
+  readonly id = "stt-server";
+  readonly capability: ProviderCapability = STT_SERVER_CAPABILITY;
 
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly openSocket: WebSocketFactory;
 
   private versionChecked = false;
   private modelsCache: Map<string, ModelInfo> | null = null;
 
-  constructor(options: SttServerNextProviderOptions) {
+  constructor(options: SttServerProviderOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.token = options.token;
     this.fetchImpl = resolveFetch(options);
+    this.openSocket = options.webSocketFactory ?? defaultSocketFactory(resolveWebSocket(options));
   }
 
   private async ensureVersion(): Promise<void> {
@@ -223,32 +293,32 @@ export class SttServerNextProvider implements SttProvider {
     try {
       res = await this.fetchImpl(`${this.baseUrl}/health`, { method: "GET" });
     } catch (err) {
-      throw new ConnectionError("Failed to reach stt-server-next /health.", { cause: err });
+      throw new ConnectionError("Failed to reach stt-server /health.", { cause: err });
     }
     if (!res.ok) {
       throw new ServerVersionError(
-        `stt-server-next /health returned HTTP ${res.status}.`,
-        { code: "not_stt_server_next" },
+        `stt-server /health returned HTTP ${res.status}.`,
+        { code: "not_stt_server" },
       );
     }
     let body: ServerHealth;
     try {
       body = (await res.json()) as ServerHealth;
     } catch (err) {
-      throw new ServerVersionError("stt-server-next /health did not return JSON.", {
-        code: "not_stt_server_next",
+      throw new ServerVersionError("stt-server /health did not return JSON.", {
+        code: "not_stt_server",
       });
     }
-    if (!EXPECTED_SERVICES.includes(body.service ?? "")) {
+    if (body.service !== EXPECTED_SERVICE) {
       throw new ServerVersionError(
         `Expected service "${EXPECTED_SERVICE}", got "${body.service ?? "unknown"}".`,
-        { code: "not_stt_server_next", details: body },
+        { code: "not_stt_server", details: body },
       );
     }
     const apiLevel = body.api_level ?? 0;
     if (apiLevel < MIN_API_LEVEL) {
       throw new ServerVersionError(
-        `stt-server-next api_level ${apiLevel} is older than the minimum required (${MIN_API_LEVEL}).`,
+        `stt-server api_level ${apiLevel} is older than the minimum required (${MIN_API_LEVEL}).`,
         { code: "server_too_old", details: body },
       );
     }
@@ -272,7 +342,7 @@ export class SttServerNextProvider implements SttProvider {
   private async toServerError(res: Response): Promise<ServerError> {
     const error = await this.parseErrorBody(res);
     const code = error?.code ?? "api_error";
-    const message = error?.message ?? `stt-server-next returned HTTP ${res.status}.`;
+    const message = error?.message ?? `stt-server returned HTTP ${res.status}.`;
     const details = error?.details;
 
     switch (code) {
@@ -313,7 +383,7 @@ export class SttServerNextProvider implements SttProvider {
         headers: this.authHeaders(),
       });
     } catch (err) {
-      throw new ConnectionError("Failed to reach stt-server-next /v1/models.", { cause: err });
+      throw new ConnectionError("Failed to reach stt-server /v1/models.", { cause: err });
     }
     if (!res.ok) throw await this.toServerError(res);
     const body = (await res.json()) as ServerModelsList;
@@ -352,6 +422,7 @@ export class SttServerNextProvider implements SttProvider {
   private buildForm(
     request: BatchTranscriptionRequest,
     caps: ModelCapabilities | undefined,
+    targetLanguage: string | undefined,
   ): FormData {
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename?.trim() || "recording.wav");
@@ -368,6 +439,8 @@ export class SttServerNextProvider implements SttProvider {
     if (request.temperature !== undefined && caps?.temperature) {
       form.append("temperature", String(request.temperature));
     }
+    // English is what the translations endpoint does without the field, and an older server rejects the field.
+    if (targetLanguage && targetLanguage !== "en") form.append("target_language", targetLanguage);
     if (request.wordTimestamps && caps?.timestamps?.word) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities", "word");
@@ -381,65 +454,148 @@ export class SttServerNextProvider implements SttProvider {
     return form;
   }
 
-  private async postAudio(
+  /**
+   * POSTs the form `build` makes to `path` and returns the parsed JSON body. When the server answers with a code that
+   * says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
+   */
+  private async postForm(
     path: string,
-    request: BatchTranscriptionRequest,
-    requireTranslation: boolean,
-  ): Promise<TranscriptionResult> {
-    await this.ensureVersion();
-    let caps = await this.resolveModelCapabilities(request.model);
-
-    if (requireTranslation && !caps?.translation) {
-      throw new UnsupportedCapabilityError(
-        `Model "${request.model ?? "default"}" does not support translation.`,
-      );
-    }
-
+    build: () => FormData,
+    signal: AbortSignal | undefined,
+    refresh?: () => Promise<void>,
+  ): Promise<unknown> {
     const attempt = async (): Promise<Response> => {
-      const form = this.buildForm(request, caps);
+      const form = build();
       try {
         return await this.fetchImpl(`${this.baseUrl}${path}`, {
           method: "POST",
           headers: this.authHeaders(),
           body: form,
-          signal: request.signal,
+          signal,
         });
       } catch (err) {
-        throw new ConnectionError(`Failed to reach stt-server-next ${path}.`, { cause: err });
+        throw new ConnectionError(`Failed to reach stt-server ${path}.`, { cause: err });
       }
     };
 
     let res = await attempt();
-    if (!res.ok) {
+    if (!res.ok && refresh) {
       const error = await this.parseErrorBody(res.clone());
       const staleCacheCodes = new Set(["model_not_installed", "unsupported_capability"]);
       if (error?.code && staleCacheCodes.has(error.code)) {
         // Refresh capabilities cache and retry once — the model list may
         // have changed underneath us (newly installed/verified, or the
         // live capability view replaced a stale "unknown").
-        caps = (await this.getModelsCache(true)).get(request.model ?? "")?.capabilities ?? caps;
+        await refresh();
         res = await attempt();
       }
     }
     if (!res.ok) throw await this.toServerError(res);
+    return res.json();
+  }
 
-    const body = (await res.json()) as ServerTranscriptionResponse;
-    return mapTranscriptionResponse(body);
+  /** `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. */
+  private async postAudio(
+    path: string,
+    request: BatchTranscriptionRequest,
+    translation?: { targetLanguage: string },
+  ): Promise<TranscriptionResult> {
+    await this.ensureVersion();
+    let caps = await this.resolveModelCapabilities(request.model);
+
+    if (translation) {
+      assertCanTranslate(request.model ?? "default", caps, translation.targetLanguage, request.language);
+    }
+
+    const body = await this.postForm(
+      path,
+      () => this.buildForm(request, caps, translation?.targetLanguage),
+      request.signal,
+      async () => {
+        caps = (await this.getModelsCache(true)).get(request.model ?? "")?.capabilities ?? caps;
+      },
+    );
+    return mapTranscriptionResponse(body as ServerTranscriptionResponse);
   }
 
   async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/transcriptions", request, false);
+    return this.postAudio("/v1/audio/transcriptions", request);
   }
 
   async translate(request: BatchTranslationRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/translations", request, true);
+    return this.postAudio("/v1/audio/translations", request, {
+      targetLanguage: request.targetLanguage?.trim() || "en",
+    });
   }
 
-  async createStream(_config: StreamConfig): Promise<StreamSession> {
-    throw new UnsupportedCapabilityError(
-      "SttServerNextProvider does not support streaming (out of scope for this adapter).",
-    );
+  /**
+   * Finds the speech in a finished recording (`POST /v1/audio/vad`, an stt-server extension): Silero VAD runs in the
+   * server, needs no loaded model and never waits behind a transcription. `audio` must be a WAV file, as for
+   * {@link transcribe}. Live voice-activity detection stays in the client; this is for audio that already exists.
+   * An stt-server older than this endpoint answers 404, which surfaces as a {@link ServerError}.
+   */
+  async detectSpeech(
+    audio: Blob | ArrayBuffer | Uint8Array,
+    options: SpeechDetectionOptions = {},
+  ): Promise<SpeechDetectionResult> {
+    await this.ensureVersion();
+    const body = (await this.postForm(
+      "/v1/audio/vad",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        const settings = {
+          threshold: options.threshold,
+          min_speech_ms: options.minSpeechMs,
+          min_silence_ms: options.minSilenceMs,
+          speech_pad_ms: options.speechPadMs,
+        };
+        for (const [name, value] of Object.entries(settings)) {
+          if (value !== undefined) form.append(name, String(value));
+        }
+        return form;
+      },
+      options.signal,
+    )) as ServerSpeechDetectionResponse;
+    return { segments: body.segments, speechRatio: body.speech_ratio, duration: body.duration };
   }
+
+  /**
+   * Live transcription of `config.model` (`default` = the server's default) over `/v1/realtime`. Only models whose
+   * `ModelInfo.capabilities.streaming` is true can stream; the audio is 16-bit PCM mono at `config.sampleRate`.
+   * Rejects with {@link UnsupportedCapabilityError} otherwise, so the caller falls back to {@link transcribe}.
+   * With `config.targetLanguage` the turns are translated instead: that needs `capabilities.translation` (and a target
+   * the model offers) but not streaming, because a model that cannot stream translates the whole turn at `stop()`.
+   * The server runs one stream at a time and cannot transcribe a batch with the streaming model meanwhile.
+   */
+  async createStream(config: StreamConfig): Promise<StreamSession> {
+    if (config.encoding !== "pcm_s16le" || config.channels !== 1) {
+      throw new UnsupportedCapabilityError("stt-server live transcription takes 16-bit mono PCM (pcm_s16le, 1 channel).");
+    }
+    await this.ensureVersion();
+    const model = config.model?.trim() || "default";
+    const caps = await this.resolveModelCapabilities(model);
+    const targetLanguage = config.targetLanguage?.trim();
+    if (targetLanguage) {
+      assertCanTranslate(model, caps, targetLanguage, config.language);
+    } else if (!caps?.streaming) {
+      throw new UnsupportedCapabilityError(`Model "${model}" does not support live transcription.`);
+    }
+    const url = new URL("/v1/realtime", this.baseUrl.replace(/^http/, "ws"));
+    url.searchParams.set("intent", "transcription");
+    url.searchParams.set("model", model);
+    const session = new SttServerStreamSession(
+      { url: url.toString(), token: this.token, openSocket: this.openSocket, connectTimeoutMs: 5000, stopTimeoutMs: 10000 },
+      { ...config, targetLanguage },
+    );
+    await session.start();
+    return session;
+  }
+}
+
+/** The bearer header goes where the platform lets a socket carry one (Node); a browser connects without it. */
+function defaultSocketFactory(WS: typeof WebSocket): WebSocketFactory {
+  return (url, headers) => ("document" in globalThis ? new WS(url) : new WS(url, { headers } as never));
 }
 
 function mapWord(word: ServerTranscriptionWord): TranscriptWord {

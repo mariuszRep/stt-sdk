@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { SttServerNextProvider } from "../src/providers/stt-server-next";
+import { SttServerProvider } from "../src/providers/stt-server";
 import {
   AdminRequiredError,
   ConnectionError,
@@ -7,6 +7,7 @@ import {
   ModelNotInstalledError,
   NetworkNotPrivateError,
   ServerBusyError,
+  ServerError,
   ServerNotReadyError,
   ServerUnsupportedCapabilityError,
   ServerVersionError,
@@ -16,7 +17,7 @@ import {
 
 const HEALTH_OK = {
   status: "ok",
-  service: "stt-server-next",
+  service: "stt-server",
   version: "0.1.0",
   api_level: 1,
 };
@@ -85,14 +86,14 @@ function mockFetch(
 }
 
 function makeProvider(routes: Record<string, () => Response>, captures: Capture[] = []) {
-  return new SttServerNextProvider({
+  return new SttServerProvider({
     baseUrl: "http://127.0.0.1:54321",
     token: "test-token",
     fetchImpl: mockFetch(captures, routes),
   });
 }
 
-describe("SttServerNextProvider — version check", () => {
+describe("SttServerProvider — version check", () => {
   it("passes with a matching service and sufficient api_level", async () => {
     const captures: Capture[] = [];
     const provider = makeProvider(
@@ -107,27 +108,18 @@ describe("SttServerNextProvider — version check", () => {
     expect(captures[0]!.url).toBe("http://127.0.0.1:54321/health");
   });
 
-  it("throws ServerVersionError(not_stt_server_next) for a wrong service", async () => {
+  it("throws ServerVersionError(not_stt_server) for a wrong service", async () => {
     const provider = makeProvider({
       "/health": () => jsonResponse({ status: "ok", service: "something-else", api_level: 1 }),
     });
     const err = await provider.listModels().catch((e) => e);
     expect(err).toBeInstanceOf(ServerVersionError);
-    expect(err.code).toBe("not_stt_server_next");
-  });
-
-  it("accepts the renamed service (stt-server 0.3.0+)", async () => {
-    const provider = makeProvider({
-      "/health": () => jsonResponse({ status: "ok", service: "stt-server", api_level: 1 }),
-      "/v1/models": () => jsonResponse(MODELS_RESPONSE),
-    });
-    const models = await provider.listModels();
-    expect(models).toHaveLength(2);
+    expect(err.code).toBe("not_stt_server");
   });
 
   it("throws ServerVersionError(server_too_old) for an insufficient api_level", async () => {
     const provider = makeProvider({
-      "/health": () => jsonResponse({ status: "ok", service: "stt-server-next", api_level: 0 }),
+      "/health": () => jsonResponse({ status: "ok", service: "stt-server", api_level: 0 }),
     });
     const err = await provider.listModels().catch((e) => e);
     expect(err).toBeInstanceOf(ServerVersionError);
@@ -135,7 +127,7 @@ describe("SttServerNextProvider — version check", () => {
   });
 
   it("wraps a network failure on /health as ConnectionError", async () => {
-    const provider = new SttServerNextProvider({
+    const provider = new SttServerProvider({
       baseUrl: "http://127.0.0.1:54321",
       token: "test-token",
       fetchImpl: vi.fn(async () => {
@@ -146,7 +138,7 @@ describe("SttServerNextProvider — version check", () => {
   });
 });
 
-describe("SttServerNextProvider — listModels mapping", () => {
+describe("SttServerProvider — listModels mapping", () => {
   it("maps default flag and derives conservative capability booleans", async () => {
     const provider = makeProvider({
       "/health": () => jsonResponse(HEALTH_OK),
@@ -161,6 +153,7 @@ describe("SttServerNextProvider — listModels mapping", () => {
       languageHint: true,
       languageDetect: false,
       translation: true,
+      streaming: false,
       temperature: true,
       timestamps: { segment: true, word: true },
     });
@@ -173,6 +166,7 @@ describe("SttServerNextProvider — listModels mapping", () => {
       languageHint: false,
       languageDetect: false,
       translation: false,
+      streaming: false,
       temperature: false,
       timestamps: { segment: false, word: false },
     });
@@ -246,6 +240,9 @@ describe("SttServerNextProvider — listModels mapping", () => {
     const catalog = models.find((m) => m.id === "catalog-model")!;
     expect(catalog.languages).toEqual(["en", "fr"]);
     expect(catalog.capabilities?.languageDetect).toBe(false);
+    // The catalog's list of languages is enough to send the hint; an unknown status with no list is not.
+    expect(catalog.capabilities?.languageHint).toBe(true);
+    expect(live.capabilities?.languageHint).toBe(true);
   });
 
   it("maps the server's name field through when present", async () => {
@@ -290,7 +287,7 @@ describe("SttServerNextProvider — listModels mapping", () => {
   });
 });
 
-describe("SttServerNextProvider — transcribe", () => {
+describe("SttServerProvider — transcribe", () => {
   it("sends model, prompt, language, temperature and word timestamps when supported", async () => {
     const captures: Capture[] = [];
     const provider = makeProvider(
@@ -414,7 +411,7 @@ describe("SttServerNextProvider — transcribe", () => {
   });
 });
 
-describe("SttServerNextProvider — translate", () => {
+describe("SttServerProvider — translate", () => {
   it("posts to /v1/audio/translations when the model supports translation", async () => {
     const captures: Capture[] = [];
     const provider = makeProvider(
@@ -443,7 +440,111 @@ describe("SttServerNextProvider — translate", () => {
   });
 });
 
-describe("SttServerNextProvider — error mapping", () => {
+describe("SttServerProvider — translation targets", () => {
+  const translating = (target_languages: string[] | null | undefined, status = "supported") => ({
+    status,
+    ...(target_languages === undefined ? {} : { target_languages }),
+  });
+  const modelsWith = (translation: Record<string, unknown>) => ({
+    object: "list",
+    data: [{ id: "m", default: true, capabilities: { translation, language_hint: { status: "supported" } } }],
+  });
+  const providerFor = (translation: Record<string, unknown>, captures: Capture[] = []) =>
+    makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/models": () => jsonResponse(modelsWith(translation)),
+        "/v1/audio/translations": () => jsonResponse({ text: "translated" }),
+      },
+      captures,
+    );
+  const posted = (captures: Capture[]) => captures.filter((c) => c.url.endsWith("/v1/audio/translations"));
+  const sentTarget = (capture: Capture) => (capture.init?.body as FormData).get("target_language");
+  const audio = new Uint8Array([1]);
+
+  it("reads the model's own target list, and nothing when it does not advertise one", async () => {
+    const targets = async (translation: Record<string, unknown>) =>
+      (await providerFor(translation).listModels())[0]!.capabilities!.translationTargets;
+    expect(await targets(translating(["en", "de"]))).toEqual(["en", "de"]);
+    expect(await targets(translating(null))).toBeUndefined();
+    expect(await targets(translating([]))).toBeUndefined();
+    expect(await targets(translating(["en"], "unknown"))).toBeUndefined();
+  });
+
+  it("lets a model translate that only the catalog claims translates, English only", async () => {
+    // The catalog view of a model that is not loaded: unverified, and it does not say into what.
+    const claimed = { status: "unknown", model_claim: true, target_languages: null };
+    const caps = (await providerFor(claimed).listModels())[0]!.capabilities!;
+    expect(caps.translation).toBe(true);
+    expect(caps.translationTargets).toBeUndefined();
+    const captures: Capture[] = [];
+    const provider = providerFor(claimed, captures);
+    await provider.translate({ file: audio });
+    expect(posted(captures)).toHaveLength(1);
+    await expect(provider.translate({ file: audio, targetLanguage: "de" })).rejects.toBeInstanceOf(
+      UnsupportedCapabilityError,
+    );
+    const denied = { status: "unsupported", model_claim: false, target_languages: [] };
+    expect((await providerFor(denied).listModels())[0]!.capabilities!.translation).toBe(false);
+  });
+
+  it("sends target_language for a target the model offers", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en", "de"]), captures);
+    const result = await provider.translate({ file: audio, targetLanguage: " de " });
+    expect(result.text).toBe("translated");
+    expect(sentTarget(posted(captures)[0]!)).toBe("de");
+  });
+
+  it("leaves the field out for English, the endpoint's default, so older servers keep working", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en", "de"]), captures);
+    await provider.translate({ file: audio });
+    await provider.translate({ file: audio, targetLanguage: "en" });
+    expect(posted(captures)).toHaveLength(2);
+    expect(posted(captures).map(sentTarget)).toEqual([null, null]);
+  });
+
+  it("refuses a target the model does not offer, without posting", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en", "de"]), captures);
+    const error = await provider.translate({ file: audio, targetLanguage: "fr" }).catch((e) => e);
+    expect(error).toBeInstanceOf(UnsupportedCapabilityError);
+    expect(error.message).toContain("en, de");
+    expect(posted(captures)).toHaveLength(0);
+  });
+
+  it("treats a translating model with no advertised list as English only", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(null), captures);
+    await expect(provider.translate({ file: audio, targetLanguage: "de" })).rejects.toBeInstanceOf(
+      UnsupportedCapabilityError,
+    );
+    await provider.translate({ file: audio, targetLanguage: "en" });
+    expect(posted(captures)).toHaveLength(1);
+  });
+
+  it("does not refuse a target equal to the source language, which the server transcribes", async () => {
+    const captures: Capture[] = [];
+    const provider = providerFor(translating(["en"]), captures);
+    await provider.translate({ file: audio, language: "fr-FR", targetLanguage: "fr" });
+    expect(sentTarget(posted(captures)[0]!)).toBe("fr");
+  });
+
+  it("passes the server's unsupported_target_language through with its code", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () => jsonResponse(modelsWith(translating(["en", "de"]))),
+      "/v1/audio/translations": () =>
+        jsonResponse({ error: { code: "unsupported_target_language", message: "no" } }, 422),
+    });
+    const error = await provider.translate({ file: audio, targetLanguage: "de" }).catch((e) => e);
+    expect(error.code).toBe("unsupported_target_language");
+    expect(error.status).toBe(422);
+  });
+});
+
+describe("SttServerProvider — error mapping", () => {
   const cases: Array<{
     code: string;
     status: number;
@@ -504,5 +605,115 @@ describe("SttServerNextProvider — error mapping", () => {
       .catch((e) => e);
     expect(err.code).toBe("some_future_code");
     expect(err.retryable).toBe(false);
+  });
+});
+
+describe("SttServerProvider — detectSpeech", () => {
+  const VAD_RESPONSE = {
+    duration: 6.165,
+    speech_seconds: 5.048,
+    speech_ratio: 0.8188,
+    segments: [
+      { start: 0.258, end: 2.942 },
+      { start: 3.074, end: 5.438 },
+    ],
+  };
+
+  it("posts the audio to /v1/audio/vad with the bearer token and maps the response", async () => {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/audio/vad": () => jsonResponse(VAD_RESPONSE),
+      },
+      captures,
+    );
+
+    const result = await provider.detectSpeech(new Uint8Array([1, 2, 3]));
+
+    expect(result).toEqual({
+      segments: [
+        { start: 0.258, end: 2.942 },
+        { start: 3.074, end: 5.438 },
+      ],
+      speechRatio: 0.8188,
+      duration: 6.165,
+    });
+    const call = captures.find((c) => c.url.endsWith("/v1/audio/vad"))!;
+    expect(call.init!.method).toBe("POST");
+    expect((call.init!.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    const form = call.init!.body as FormData;
+    expect((form.get("file") as File).name).toBe("recording.wav");
+    // No model is involved, so the model list is never fetched; unset options are not sent.
+    expect(captures.some((c) => c.url.endsWith("/v1/models"))).toBe(false);
+    for (const field of ["threshold", "min_speech_ms", "min_silence_ms", "speech_pad_ms"]) {
+      expect(form.has(field)).toBe(false);
+    }
+  });
+
+  it("sends the options it is given", async () => {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/audio/vad": () => jsonResponse({ ...VAD_RESPONSE, segments: [] }),
+      },
+      captures,
+    );
+
+    const result = await provider.detectSpeech(new Blob(["x"]), {
+      filename: "clip.wav",
+      threshold: 0.6,
+      minSpeechMs: 300,
+      minSilenceMs: 150,
+      speechPadMs: 40,
+    });
+
+    expect(result.segments).toEqual([]);
+    const form = captures.find((c) => c.url.endsWith("/v1/audio/vad"))!.init!.body as FormData;
+    expect((form.get("file") as File).name).toBe("clip.wav");
+    expect(form.get("threshold")).toBe("0.6");
+    expect(form.get("min_speech_ms")).toBe("300");
+    expect(form.get("min_silence_ms")).toBe("150");
+    expect(form.get("speech_pad_ms")).toBe("40");
+  });
+
+  it("passes the server's invalid_request_error through with its code and status", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/vad": () =>
+        jsonResponse(
+          { error: { code: "invalid_request_error", message: "threshold must be between 0.05 and 0.95" } },
+          400,
+        ),
+    });
+
+    const err = await provider.detectSpeech(new Uint8Array([1]), { threshold: 2 }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(ServerError);
+    expect(err.code).toBe("invalid_request_error");
+    expect(err.status).toBe(400);
+  });
+
+  it("maps an unauthorized answer to UnauthorizedError", async () => {
+    const provider = makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/audio/vad": () => jsonResponse({ error: { code: "unauthorized", message: "no" } }, 401),
+    });
+
+    await expect(provider.detectSpeech(new Uint8Array([1]))).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it("wraps a network failure as ConnectionError", async () => {
+    const provider = new SttServerProvider({
+      baseUrl: "http://127.0.0.1:54321",
+      token: "test-token",
+      fetchImpl: vi.fn(async (input: FetchInput) => {
+        if (String(input).endsWith("/health")) return jsonResponse(HEALTH_OK);
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch,
+    });
+
+    await expect(provider.detectSpeech(new Uint8Array([1]))).rejects.toBeInstanceOf(ConnectionError);
   });
 });
