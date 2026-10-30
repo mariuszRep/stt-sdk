@@ -125,6 +125,9 @@ import type {
   StreamSession,
 } from "@open-vibe-ai/stt-sdk";
 
+import { parseModelRef, formatModelRef, fromOllama, toBooleans, MODEL_ENTRY_SCHEMA } from "@open-vibe-ai/stt-sdk/registry";
+import type { ModelEntry, ModelRef, ModelTask } from "@open-vibe-ai/stt-sdk/registry";
+
 const local: SttProvider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
 const cloud: SttProvider = new DeepgramProvider({ apiKey: "test" });
 const seam: SttProvider = new WhisperCppProvider({ baseUrl: "http://127.0.0.1:8001" });
@@ -170,6 +173,11 @@ const session: StreamSession = {
   abort: () => {},
 };
 
+const modelRef: ModelRef | null = parseModelRef("llm/ollama/llama3.2");
+const tasks: ModelTask[] = ["text-to-text", "vision"];
+const ollamaEntries: ModelEntry[] = fromOllama({ models: [{ name: "llama3.2" }] });
+console.log(modelRef && formatModelRef(modelRef), tasks, ollamaEntries[0]?.ref, toBooleans(undefined).streaming, MODEL_ENTRY_SCHEMA.$id);
+
 async function main(): Promise<void> {
   const result: TranscriptionResult = await local.transcribe(request);
   console.log(result.text, cloud.capability.id, seam.capability.id, fromDescriptor.id);
@@ -194,6 +202,8 @@ const fromDescriptor = sdk.createProvider({
   baseUrl: "http://127.0.0.1:8000",
 });
 console.log(provider.capability.id, dg.capability.id, fromDescriptor.id, sdk.PROTOCOL_VERSION);
+const registry = require("@open-vibe-ai/stt-sdk/registry");
+console.log(registry.formatModelRef(registry.parseModelRef("speech/stt-server/whisper-tiny")), registry.MODEL_KINDS.length, registry.MODEL_ENTRY_SCHEMA.$id);
 `,
   );
 
@@ -202,12 +212,17 @@ console.log(provider.capability.id, dg.capability.id, fromDescriptor.id, sdk.PRO
   console.log("Typechecking consumer (ESM + CJS) against the installed package…");
   run("npx tsc --noEmit", { cwd: fixture });
 
-  const installed = existsSync(join(fixture, "node_modules", "@open-vibe-ai", "stt-sdk", "dist", "index.js"));
-  if (!installed) {
-    console.error("Installed package missing dist/index.js");
-    process.exit(1);
+  for (const file of ["index.js", "index.cjs", "registry.js", "registry.cjs", "registry.d.ts"]) {
+    if (!existsSync(join(fixture, "node_modules", "@open-vibe-ai", "stt-sdk", "dist", file))) {
+      console.error(`Installed package missing dist/${file}`);
+      process.exit(1);
+    }
   }
-  console.log("Consumer verification OK: installed from tarball, ESM + CJS typecheck passed");
+  // The registry subpath must also load, not only typecheck, from both module systems.
+  const probe = "parseModelRef('llm/ollama/llama3.2').id === 'llama3.2:latest' || process.exit(1)";
+  run(`node --input-type=module -e "import { parseModelRef } from '@open-vibe-ai/stt-sdk/registry'; ${probe}"`, { cwd: fixture });
+  run(`node -e "const { parseModelRef } = require('@open-vibe-ai/stt-sdk/registry'); ${probe}"`, { cwd: fixture });
+  console.log("Consumer verification OK: installed from tarball, ESM + CJS typecheck passed, registry loads in ESM and CJS");
 } finally {
   rmSync(fixture, { recursive: true, force: true });
 }

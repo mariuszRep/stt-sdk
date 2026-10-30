@@ -21,6 +21,8 @@ import type {
   TranscriptionSegment,
   TranscriptWord,
 } from "../types";
+import type { CapabilityMatrix } from "../registry/capabilities";
+import { languagesOfMatrix, toBooleans } from "../registry/capabilities";
 import type { TransportDeps } from "../transport";
 import { resolveFetch, resolveWebSocket, toBlob } from "../transport";
 import { SttServerStreamSession, type WebSocketFactory } from "./stt-server-stream";
@@ -56,27 +58,6 @@ export interface SttServerProviderOptions extends TransportDeps {
 const MIN_API_LEVEL = 1;
 const EXPECTED_SERVICE = "stt-server";
 
-interface ControlCapability {
-  status?: "supported" | "unsupported" | "unknown" | string;
-  /** What the catalog claims for the model, before the loaded engine has confirmed it (an `"unknown"` status). */
-  model_claim?: unknown;
-  /** `translation` only: the languages the model translates into; `null` when it translates but does not say. */
-  target_languages?: string[] | null;
-}
-
-/**
- * `language_hint`'s extra fields (client-contract.md §4.1): the live
- * `EffectiveCaps` view flattens its per-control extras (here, `languages`)
- * directly onto the control object; the catalog (unloaded) view instead
- * reports its static claim under `model_claim`. Some server versions may
- * nest either under an `extra` object, so both shapes are accepted.
- */
-interface LanguageHintCapability extends ControlCapability {
-  languages?: string[];
-  model_claim?: string[];
-  extra?: { languages?: string[]; model_claim?: string[] };
-}
-
 interface ServerModelEntry {
   id: string;
   /** Friendly display name (catalog name, custom_name, or derived); added in a later server version. */
@@ -84,7 +65,7 @@ interface ServerModelEntry {
   object?: string;
   owned_by?: string;
   default?: boolean;
-  capabilities?: Record<string, ControlCapability> & { language_hint?: LanguageHintCapability };
+  capabilities?: CapabilityMatrix;
   /** Top-level convenience fields added in stt-server 0.1.1. */
   languages?: string[];
   language_detect?: boolean;
@@ -176,70 +157,13 @@ function isReference(speaker: object): speaker is KnownSpeakerReference {
 }
 
 /**
- * Derives the SDK's simple supported/not-supported {@link ModelCapabilities}
- * booleans from stt-server's richer per-control status values
- * (`"supported" | "unsupported" | "unknown"`, see client-contract.md §4.1).
- *
- * Rule: a control counts as supported only when the server explicitly says
- * `"supported"`. `"unknown"` (an unverified catalog claim, before any engine
- * has looked at the loaded file) and `"unsupported"` are both treated as
- * *not* supported — the SDK never sends an optional field it cannot confirm
- * the model accepts, per the contract's "clients omit unsupported or unknown
- * controls" rule (§4.3). Once the model has actually been loaded, the
- * server's live view replaces `"unknown"` with a verified answer, and this
- * mapping picks that up automatically on the next `listModels`/cache refresh.
- */
-function deriveCapabilities(
-  raw: (Record<string, ControlCapability> & { language_hint?: LanguageHintCapability }) | undefined,
-): ModelCapabilities {
-  const supported = (control?: ControlCapability): boolean => control?.status === "supported";
-  const translates = confirmedOrClaimed(raw?.translation);
-  const translationTargets = translates ? raw?.translation?.target_languages : undefined;
-  return {
-    prompt: supported(raw?.prompt),
-    // Like translation, a model that is not loaded yet reports the languages it claims (`unknown` status): that is
-    // enough to send the hint, which the server refuses for a model that cannot take it.
-    languageHint: supported(raw?.language_hint) || claimsLanguages(raw?.language_hint),
-    languageDetect: supported(raw?.language_detect),
-    translation: translates,
-    // Only a non-empty list is a real answer: `null` is "not advertised" (English only) and `[]` is "none".
-    ...(translationTargets?.length ? { translationTargets } : {}),
-    streaming: confirmedOrClaimed(raw?.streaming),
-    temperature: supported(raw?.temperature),
-    timestamps: {
-      // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
-      // gates the `word` value specifically (client-contract.md §4.1, §4.3).
-      segment: supported(raw?.timestamp_granularity),
-      word: supported(raw?.word_timestamps),
-    },
-  };
-}
-
-/**
- * Whether a model can do what the control stands for (stream live, translate). Unlike the other controls, an
- * unconfirmed (`"unknown"`) status counts when the catalog claims it: nothing is sent that a model could reject, and a
- * model that cannot is refused by the server (`streaming_unsupported`, `unsupported_capability`), which the caller
- * answers by transcribing in batch or refreshing the model list. Waiting for the engine to confirm would make the first
- * recording after a start always batch, and a translation setting on a model that is not loaded yet unusable.
- */
-function confirmedOrClaimed(control?: ControlCapability): boolean {
-  return control?.status === "supported" || (control?.status === "unknown" && control.model_claim === true);
-}
-
-/** Whether an unconfirmed `language_hint` carries a list of languages the catalog claims the model understands. */
-function claimsLanguages(control?: LanguageHintCapability): boolean {
-  return control?.status === "unknown" && Array.isArray(control.model_claim) && control.model_claim.length > 0;
-}
-
-/**
  * The model's supported language codes: prefers the top-level `languages`
  * field (stt-server 0.1.1+), falling back to `capabilities.language_hint`'s
- * live `languages` or catalog `model_claim` (see {@link LanguageHintCapability}).
+ * live `languages` or catalog `model_claim` (see `languagesOfMatrix`).
  */
 function deriveLanguages(entry: ServerModelEntry): string[] | undefined {
   if (Array.isArray(entry.languages)) return entry.languages;
-  const hint = entry.capabilities?.language_hint;
-  return hint?.languages ?? hint?.extra?.languages ?? hint?.model_claim ?? hint?.extra?.model_claim;
+  return languagesOfMatrix(entry.capabilities);
 }
 
 /** The primary language subtag: `en-US` and `en_us` are both `en`. */
@@ -270,7 +194,7 @@ function assertCanTranslate(
 }
 
 function mapModelEntry(entry: ServerModelEntry): ModelInfo {
-  const capabilities = deriveCapabilities(entry.capabilities);
+  const capabilities = toBooleans(entry.capabilities);
   // Prefer the top-level `language_detect` field (0.1.1+) over the derived
   // capability, which only reflects a `"supported"` status.
   if (typeof entry.language_detect === "boolean") {

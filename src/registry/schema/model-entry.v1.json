@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:open-vibe-ai:stt-sdk:model-entry:v1",
+  "title": "ModelEntry",
+  "description": "One model of the one model list: where it runs (locality), what it does (tasks, several allowed) and what it can be asked to do (capabilities). Additive fields never change the version; a renamed or removed field does.",
+  "type": "object",
+  "required": ["ref", "kind", "provider", "id", "name", "tasks", "locality", "access", "privacy", "capabilities"],
+  "properties": {
+    "ref": { "type": "string", "pattern": "^(speech|llm|speaker|vad|denoise|tts|embedding)/[a-z0-9][a-z0-9._:-]*/\\S(.*\\S)?$", "description": "kind/provider/id; equals the three parts below." },
+    "kind": { "$ref": "#/$defs/kind" },
+    "provider": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]*$" },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" }, "minItems": 1, "uniqueItems": true },
+    "locality": { "enum": ["local", "cloud"] },
+    "access": { "enum": ["free", "plus"] },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "capabilities": { "$ref": "#/$defs/capabilityMatrix" },
+    "family": { "type": "string" },
+    "architecture": { "type": "string" },
+    "parameters": { "type": "string" },
+    "baseModel": { "type": "string" },
+    "license": { "type": "string" },
+    "languages": { "type": "array", "items": { "type": "string" } },
+    "local": { "$ref": "#/$defs/localInfo" },
+    "builtin": { "type": "boolean" },
+    "cloud": { "$ref": "#/$defs/cloudInfo" },
+    "editorial": { "$ref": "#/$defs/editorial" }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "speech" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "speech-to-text" } } } } },
+    { "if": { "properties": { "kind": { "const": "llm" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "text-to-text" } } } } },
+    { "if": { "properties": { "kind": { "const": "speaker" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "speaker-embedding" } } } } },
+    { "if": { "properties": { "kind": { "const": "vad" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "voice-activity-detection" } } } } },
+    { "if": { "properties": { "kind": { "const": "denoise" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "denoise" } } } } },
+    { "if": { "properties": { "kind": { "const": "tts" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "text-to-speech" } } } } },
+    { "if": { "properties": { "kind": { "const": "embedding" } }, "required": ["kind"] }, "then": { "properties": { "tasks": { "type": "array", "contains": { "const": "text-embedding" } } } } },
+    { "if": { "properties": { "locality": { "const": "local" } }, "required": ["locality"] }, "then": { "properties": { "privacy": { "type": "object", "properties": { "sends": { "type": "array", "maxItems": 0 } } } } } },
+    { "if": { "properties": { "locality": { "const": "cloud" } }, "required": ["locality"] }, "then": { "properties": { "privacy": { "type": "object", "properties": { "sends": { "type": "array", "minItems": 1 } } } } } }
+  ],
+  "$defs": {
+    "kind": { "enum": ["speech", "llm", "speaker", "vad", "denoise", "tts", "embedding"] },
+    "task": { "enum": ["speech-to-text", "text-to-text", "vision", "text-to-speech", "text-embedding", "speaker-embedding", "voice-activity-detection", "denoise"] },
+    "privacy": {
+      "type": "object",
+      "required": ["sends"],
+      "properties": {
+        "sends": { "type": "array", "items": { "enum": ["audio", "text", "context", "images"] }, "uniqueItems": true },
+        "to": { "type": "string", "minLength": 1 }
+      }
+    },
+    "controlCapability": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["supported", "unsupported", "unknown"] },
+        "reason": { "type": ["string", "null"] },
+        "evidence": { "type": "string", "description": "catalog_claim, gguf_header, loaded_model, provider_api, learned, cloud_claim; a source may send others." },
+        "mechanism": { "type": ["string", "null"] },
+        "extra": { "type": "object" }
+      }
+    },
+    "capabilityMatrix": {
+      "type": "object",
+      "description": "Control name -> tri-state capability. Controls: prompt, temperature, language_hint, language_detect, translation, timestamp_granularity, word_timestamps, streaming, response_formats, punctuation, itn, cancellation, long_form, spec_decode, native_sample_rate, diarization, speaker_embedding, tools, thinking, vision, json_schema, system_role, context_window (extra.tokens), text_streaming.",
+      "additionalProperties": { "$ref": "#/$defs/controlCapability" }
+    },
+    "localInfo": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["filename", "quant"],
+            "properties": {
+              "filename": { "type": "string" },
+              "quant": { "type": "string" },
+              "sizeBytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        },
+        "revision": { "type": "string" },
+        "upstreamId": { "type": "string" },
+        "defaultQuant": { "type": "string" },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "quant": { "type": "string" },
+        "digest": { "type": "string" },
+        "source": { "type": "string" },
+        "custom": { "type": "boolean" }
+      }
+    },
+    "cloudInfo": {
+      "type": "object",
+      "properties": {
+        "modelIdFreeText": { "type": "boolean" },
+        "pricingNote": { "type": "string" }
+      }
+    },
+    "editorial": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "recommended": { "type": "boolean" },
+        "recommendedRank": { "type": ["integer", "null"] },
+        "speedScore": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "accuracyScore": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "source": { "enum": ["handy", "stanzo"] }
+      }
+    },
+    "modelState": {
+      "type": "object",
+      "required": ["ref", "installed", "default"],
+      "properties": {
+        "ref": { "type": "string" },
+        "installed": { "type": "boolean" },
+        "needsVerification": { "type": "boolean" },
+        "downloading": { "type": "boolean" },
+        "loaded": { "type": "boolean" },
+        "needsKey": { "type": "boolean" },
+        "reachable": { "type": "boolean" },
+        "default": { "type": "boolean" },
+        "installedQuant": { "type": ["string", "null"] }
+      }
+    },
+    "providerAuth": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["none", "bearer", "x-api-key", "token", "query"] },
+        "keyUrl": { "type": "string", "pattern": "^https://" }
+      }
+    },
+    "providerQuirks": {
+      "type": "object",
+      "required": ["reasoningOff", "systemRole", "structuredOutput"],
+      "properties": {
+        "reasoningOff": { "enum": ["reasoning_effort_none", "reasoning_exclude", "chat_template_enable_thinking_false", "think_false", "native_budget_0", "none"] },
+        "systemRole": { "enum": ["system", "fold"] },
+        "structuredOutput": { "enum": ["json_schema", "json_object", "none"] },
+        "stripModelsPrefix": { "type": "boolean" },
+        "extraHeaders": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "providerTimeouts": {
+      "type": "object",
+      "required": ["connectMs", "firstByteMs", "stallMs", "totalMs"],
+      "properties": {
+        "connectMs": { "type": "integer", "minimum": 1 },
+        "firstByteMs": { "type": "integer", "minimum": 1 },
+        "stallMs": { "type": "integer", "minimum": 1 },
+        "totalMs": { "type": "integer", "minimum": 1 },
+        "longRunMs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "providerRetry": {
+      "type": "object",
+      "required": ["statuses", "max", "backoffMs"],
+      "properties": {
+        "statuses": { "type": "array", "items": { "type": "integer", "minimum": 100, "maximum": 599 } },
+        "max": { "type": "integer", "minimum": 0 },
+        "backoffMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "providerService": {
+      "type": "object",
+      "required": ["kind", "api", "baseUrl", "baseUrlEditable", "modelsEndpoint", "modelIdFreeText", "privacy"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/kind" },
+        "api": { "enum": ["stt-server", "ollama", "openai-chat", "anthropic-messages", "openai-audio", "deepgram-listen", "app-builtin"] },
+        "baseUrl": { "type": "string", "pattern": "^https?://" },
+        "baseUrlEditable": { "type": "boolean" },
+        "modelsEndpoint": { "type": ["string", "null"] },
+        "modelIdFreeText": { "type": "boolean" },
+        "privacy": { "$ref": "#/$defs/privacy" },
+        "quirks": { "$ref": "#/$defs/providerQuirks" },
+        "timeouts": { "$ref": "#/$defs/providerTimeouts" },
+        "retry": { "$ref": "#/$defs/providerRetry" }
+      }
+    },
+    "providerDescriptor": {
+      "type": "object",
+      "required": ["id", "name", "locality", "access", "auth", "serves"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "locality": { "enum": ["local", "cloud"] },
+        "access": { "enum": ["free", "plus"] },
+        "auth": { "$ref": "#/$defs/providerAuth" },
+        "serves": { "type": "array", "items": { "$ref": "#/$defs/providerService" }, "minItems": 1 },
+        "template": { "type": "boolean" }
+      }
+    },
+    "providerCatalog": {
+      "type": "object",
+      "required": ["schemaVersion", "catalogVersion", "providers"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "catalogVersion": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "providers": { "type": "array", "items": { "$ref": "#/$defs/providerDescriptor" } }
+      }
+    },
+    "cloudModelRecord": {
+      "type": "object",
+      "required": ["provider", "kind", "id", "name"],
+      "properties": {
+        "provider": { "type": "string" },
+        "kind": { "$ref": "#/$defs/kind" },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" }, "uniqueItems": true },
+        "contextWindow": { "type": "integer", "minimum": 1 },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "claims": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tools": { "type": "boolean" },
+            "thinking": { "type": "boolean" },
+            "jsonSchema": { "type": "boolean" },
+            "systemRole": { "type": "boolean" },
+            "textStreaming": { "type": "boolean" },
+            "languageHint": { "type": "boolean" },
+            "prompt": { "type": "boolean" },
+            "temperature": { "type": "boolean" },
+            "timestamps": { "type": "boolean" },
+            "translation": { "type": "boolean" },
+            "streaming": { "type": "boolean" }
+          }
+        },
+        "pricingNote": { "type": "string" }
+      }
+    },
+    "cloudModelCatalog": {
+      "type": "object",
+      "required": ["schemaVersion", "catalogVersion", "models"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "catalogVersion": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "models": { "type": "array", "items": { "$ref": "#/$defs/cloudModelRecord" } }
+      }
+    }
+  }
+}
