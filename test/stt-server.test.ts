@@ -411,6 +411,73 @@ describe("SttServerProvider — transcribe", () => {
   });
 });
 
+describe("SttServerProvider — transcribe, the server's top-level word timings", () => {
+  // Shaped like stt-server's verbose_json with timestamp_granularities=word: seconds, no probability, `words` beside `segments`.
+  const SERVER_VERBOSE = {
+    task: "transcribe",
+    duration: 4,
+    text: "hello there general kenobi",
+    language: "en",
+    segments: [
+      { id: 0, start: 0, end: 1.5, text: "hello there" },
+      { id: 1, start: 2, end: 4, text: "general kenobi" },
+    ],
+    words: [
+      { word: "hello", start: 0.1, end: 0.6 },
+      { word: "there", start: 0.7, end: 1.4 },
+      { word: "general", start: 2.1, end: 3.0 },
+      { word: "kenobi", start: 3.2, end: 3.9 },
+    ],
+    x_diagnostics: { model: "parakeet" },
+  };
+
+  const transcribe = (body: unknown) =>
+    makeProvider({
+      "/health": () => jsonResponse(HEALTH_OK),
+      "/v1/models": () => jsonResponse(MODELS_RESPONSE),
+      "/v1/audio/transcriptions": () => jsonResponse(body),
+    }).transcribe({ file: new Uint8Array([1]), model: "whisper-tiny", wordTimestamps: true });
+
+  it("puts each word into the segment that contains its midpoint", async () => {
+    const result = await transcribe(SERVER_VERBOSE);
+
+    expect(result.segments!.map((s) => s.words!.map((w) => w.word))).toEqual([["hello", "there"], ["general", "kenobi"]]);
+    expect(result.segments![1]!.words![0]).toEqual({ word: "general", startMs: 2100, endMs: 3000, probability: 0 });
+    expect(result.segments![0]).toMatchObject({ text: "hello there", startMs: 0, endMs: 1500 });
+  });
+
+  it("puts a word in the gap between segments into the nearest one", async () => {
+    const result = await transcribe({ ...SERVER_VERBOSE, words: [{ word: "um", start: 1.6, end: 1.8 }] });
+
+    expect(result.segments![0]!.words!.map((w) => w.word)).toEqual(["um"]);
+    expect(result.segments![1]!.words).toEqual([]);
+  });
+
+  it("keeps the words a segment already carries and leaves the top-level list unused", async () => {
+    const result = await transcribe({
+      ...SERVER_VERBOSE,
+      segments: [{ text: "hello", start: 0, end: 4, words: [{ word: "hello", start: 0, end: 0.5, probability: 0.9 }] }],
+    });
+
+    expect(result.segments![0]!.words).toEqual([{ word: "hello", startMs: 0, endMs: 500, probability: 0.9 }]);
+  });
+
+  it("covers words that come without segments with one segment holding the whole text", async () => {
+    const result = await transcribe({ ...SERVER_VERBOSE, segments: undefined });
+
+    expect(result.segments).toHaveLength(1);
+    expect(result.segments![0]).toMatchObject({ text: "hello there general kenobi", startMs: 100, endMs: 3900 });
+    expect(result.segments![0]!.words).toHaveLength(4);
+  });
+
+  it("leaves the segments as they are when the response has no words", async () => {
+    const { words: _words, ...noWords } = SERVER_VERBOSE;
+    const result = await transcribe(noWords);
+
+    expect(result.segments!.map((s) => s.words)).toEqual([undefined, undefined]);
+  });
+});
+
 describe("SttServerProvider — translate", () => {
   it("posts to /v1/audio/translations when the model supports translation", async () => {
     const captures: Capture[] = [];

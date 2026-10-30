@@ -113,6 +113,8 @@ interface ServerTranscriptionResponse {
   language?: string;
   duration?: number;
   segments?: ServerTranscriptionSegment[];
+  /** stt-server's `verbose_json` with word granularity: one list for the whole file, not per segment. */
+  words?: ServerTranscriptionWord[];
   x_diagnostics?: Record<string, unknown>;
 }
 
@@ -706,11 +708,35 @@ function mapSegment(segment: ServerTranscriptionSegment): TranscriptionSegment {
   };
 }
 
+/**
+ * Puts the file-wide `words` list into the segments: each word goes to the segment that contains its midpoint (the
+ * nearest one when it falls in a gap), after the words the segment already carries. Words without any segment to
+ * go into get one segment of their own that spans them and holds the whole text.
+ */
+function placeWords(text: string, segments: TranscriptionSegment[], words: TranscriptWord[]): TranscriptionSegment[] {
+  if (segments.length === 0) {
+    return [{ text, startMs: words[0]!.startMs, endMs: words[words.length - 1]!.endMs, words }];
+  }
+  const placed = segments.map((segment) => ({ ...segment, words: [...(segment.words ?? [])] }));
+  for (const word of words) {
+    const mid = (word.startMs + word.endMs) / 2;
+    const distance = (segment: TranscriptionSegment) => Math.max(segment.startMs - mid, mid - segment.endMs, 0);
+    const home = placed.reduce((best, segment) => (distance(segment) < distance(best) ? segment : best));
+    home.words.push(word);
+  }
+  return placed;
+}
+
 function mapTranscriptionResponse(body: ServerTranscriptionResponse): TranscriptionResult {
   const result: TranscriptionResult = { text: body.text };
   if (body.language !== undefined) result.language = body.language;
   if (body.duration !== undefined) result.durationMs = Math.round(body.duration * 1000);
-  if (body.segments !== undefined) result.segments = body.segments.map(mapSegment);
+  const segments = body.segments?.map(mapSegment);
+  // Segments that already carry words (a server that nests them) keep them; the file-wide list is only used otherwise.
+  const nested = segments?.some((segment) => segment.words?.length) ?? false;
+  const words = body.words && !nested ? body.words.map(mapWord) : [];
+  if (words.length > 0) result.segments = placeWords(body.text, segments ?? [], words);
+  else if (segments !== undefined) result.segments = segments;
   if (body.x_diagnostics !== undefined) result.diagnostics = body.x_diagnostics;
   return result;
 }

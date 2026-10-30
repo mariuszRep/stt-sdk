@@ -95,6 +95,10 @@ interface LanguageHintCapability extends ControlCapability {
 
 const supported = (control?: ControlCapability): boolean => control?.status === "supported";
 
+/** Whether the `timestamp_granularity` control is confirmed and its finest granularity is at least words. */
+const reachesWords = (control?: ControlCapability): boolean =>
+  supported(control) && (control?.max === "word" || control?.max === "token");
+
 /**
  * Whether a model can do what the control stands for (stream live, translate). Unlike the other controls, an
  * unconfirmed (`"unknown"`) status counts when the catalog claims it: nothing is sent that a model could reject, and a
@@ -134,9 +138,10 @@ export function toBooleans(raw: CapabilityMatrix | undefined): ModelCapabilities
     temperature: supported(raw?.temperature),
     timestamps: {
       // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
-      // gates the `word` value specifically (client-contract.md §4.1, §4.3).
+      // gates the `word` value specifically (client-contract.md §4.1, §4.3). stt-server sends only
+      // `timestamp_granularity`, and its `max` says how fine it goes: `word` or `token` takes word requests.
       segment: supported(raw?.timestamp_granularity),
-      word: supported(raw?.word_timestamps),
+      word: supported(raw?.word_timestamps) || reachesWords(raw?.timestamp_granularity),
     },
   };
 }

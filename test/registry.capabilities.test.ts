@@ -54,6 +54,15 @@ describe("toBooleans", () => {
     });
   });
 
+  it("takes word timestamps from the finest granularity the server reports", () => {
+    const word = (control: Record<string, unknown>) => toBooleans({ timestamp_granularity: control } as never).timestamps?.word;
+    expect(word({ status: "supported", max: "token" })).toBe(true);
+    expect(word({ status: "supported", max: "word" })).toBe(true);
+    expect(word({ status: "supported", max: "segment" })).toBe(false);
+    expect(word({ status: "unknown", max: "token" })).toBe(false);
+    expect(toBooleans({ word_timestamps: { status: "supported" } }).timestamps?.word).toBe(true);
+  });
+
   it("offers translation targets only for a translating model that lists some", () => {
     expect(toBooleans({ translation: { status: "supported", target_languages: ["en", "de"] } }).translationTargets).toEqual(["en", "de"]);
     expect(toBooleans({ translation: { status: "supported", target_languages: [] } }).translationTargets).toBeUndefined();
