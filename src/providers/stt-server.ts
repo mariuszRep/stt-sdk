@@ -2,17 +2,27 @@ import type { SttProvider } from "../provider";
 import type {
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  DiarizationOptions,
+  DiarizationResult,
+  KnownSpeakerEmbedding,
+  KnownSpeakerReference,
   ModelCapabilities,
   ModelInfo,
   ProviderCapability,
+  SpeakerEmbeddingOptions,
+  SpeakerEmbeddingResult,
   SpeechDetectionOptions,
   SpeechDetectionResult,
   StreamConfig,
   StreamSession,
+  SubtitleFormat,
+  SubtitleRequest,
   TranscriptionResult,
   TranscriptionSegment,
   TranscriptWord,
 } from "../types";
+import type { CapabilityMatrix } from "../registry/capabilities";
+import { languagesOfMatrix, toBooleans } from "../registry/capabilities";
 import type { TransportDeps } from "../transport";
 import { resolveFetch, resolveWebSocket, toBlob } from "../transport";
 import { SttServerStreamSession, type WebSocketFactory } from "./stt-server-stream";
@@ -48,27 +58,6 @@ export interface SttServerProviderOptions extends TransportDeps {
 const MIN_API_LEVEL = 1;
 const EXPECTED_SERVICE = "stt-server";
 
-interface ControlCapability {
-  status?: "supported" | "unsupported" | "unknown" | string;
-  /** What the catalog claims for the model, before the loaded engine has confirmed it (an `"unknown"` status). */
-  model_claim?: unknown;
-  /** `translation` only: the languages the model translates into; `null` when it translates but does not say. */
-  target_languages?: string[] | null;
-}
-
-/**
- * `language_hint`'s extra fields (client-contract.md §4.1): the live
- * `EffectiveCaps` view flattens its per-control extras (here, `languages`)
- * directly onto the control object; the catalog (unloaded) view instead
- * reports its static claim under `model_claim`. Some server versions may
- * nest either under an `extra` object, so both shapes are accepted.
- */
-interface LanguageHintCapability extends ControlCapability {
-  languages?: string[];
-  model_claim?: string[];
-  extra?: { languages?: string[]; model_claim?: string[] };
-}
-
 interface ServerModelEntry {
   id: string;
   /** Friendly display name (catalog name, custom_name, or derived); added in a later server version. */
@@ -76,7 +65,7 @@ interface ServerModelEntry {
   object?: string;
   owned_by?: string;
   default?: boolean;
-  capabilities?: Record<string, ControlCapability> & { language_hint?: LanguageHintCapability };
+  capabilities?: CapabilityMatrix;
   /** Top-level convenience fields added in stt-server 0.1.1. */
   languages?: string[];
   language_detect?: boolean;
@@ -124,7 +113,16 @@ interface ServerTranscriptionResponse {
   language?: string;
   duration?: number;
   segments?: ServerTranscriptionSegment[];
+  /** stt-server's `verbose_json` with word granularity: one list for the whole file, not per segment. */
+  words?: ServerTranscriptionWord[];
   x_diagnostics?: Record<string, unknown>;
+}
+
+interface ServerSpeakerEmbeddingResponse {
+  model: string;
+  dim: number;
+  duration: number;
+  segments: Array<{ start: number; end: number; embedding: string | number[] | null }>;
 }
 
 interface ServerSpeechDetectionResponse {
@@ -134,71 +132,40 @@ interface ServerSpeechDetectionResponse {
   segments: Array<{ start: number; end: number }>;
 }
 
-/**
- * Derives the SDK's simple supported/not-supported {@link ModelCapabilities}
- * booleans from stt-server's richer per-control status values
- * (`"supported" | "unsupported" | "unknown"`, see client-contract.md §4.1).
- *
- * Rule: a control counts as supported only when the server explicitly says
- * `"supported"`. `"unknown"` (an unverified catalog claim, before any engine
- * has looked at the loaded file) and `"unsupported"` are both treated as
- * *not* supported — the SDK never sends an optional field it cannot confirm
- * the model accepts, per the contract's "clients omit unsupported or unknown
- * controls" rule (§4.3). Once the model has actually been loaded, the
- * server's live view replaces `"unknown"` with a verified answer, and this
- * mapping picks that up automatically on the next `listModels`/cache refresh.
- */
-function deriveCapabilities(
-  raw: (Record<string, ControlCapability> & { language_hint?: LanguageHintCapability }) | undefined,
-): ModelCapabilities {
-  const supported = (control?: ControlCapability): boolean => control?.status === "supported";
-  const translates = confirmedOrClaimed(raw?.translation);
-  const translationTargets = translates ? raw?.translation?.target_languages : undefined;
-  return {
-    prompt: supported(raw?.prompt),
-    // Like translation, a model that is not loaded yet reports the languages it claims (`unknown` status): that is
-    // enough to send the hint, which the server refuses for a model that cannot take it.
-    languageHint: supported(raw?.language_hint) || claimsLanguages(raw?.language_hint),
-    languageDetect: supported(raw?.language_detect),
-    translation: translates,
-    // Only a non-empty list is a real answer: `null` is "not advertised" (English only) and `[]` is "none".
-    ...(translationTargets?.length ? { translationTargets } : {}),
-    streaming: confirmedOrClaimed(raw?.streaming),
-    temperature: supported(raw?.temperature),
-    timestamps: {
-      // `timestamp_granularity` gates `timestamp_granularities=segment`; `word_timestamps`
-      // gates the `word` value specifically (client-contract.md §4.1, §4.3).
-      segment: supported(raw?.timestamp_granularity),
-      word: supported(raw?.word_timestamps),
-    },
-  };
+/** Decodes base64 of little-endian f32 bytes (the server's `encoding_format: "base64"`). */
+function decodeFloat32(encoded: string): number[] {
+  const binary = atob(encoded);
+  const view = new DataView(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) view.setUint8(i, binary.charCodeAt(i));
+  return Array.from({ length: binary.length / 4 }, (_, i) => view.getFloat32(i * 4, true));
 }
 
-/**
- * Whether a model can do what the control stands for (stream live, translate). Unlike the other controls, an
- * unconfirmed (`"unknown"`) status counts when the catalog claims it: nothing is sent that a model could reject, and a
- * model that cannot is refused by the server (`streaming_unsupported`, `unsupported_capability`), which the caller
- * answers by transcribing in batch or refreshing the model list. Waiting for the engine to confirm would make the first
- * recording after a start always batch, and a translation setting on a model that is not loaded yet unusable.
- */
-function confirmedOrClaimed(control?: ControlCapability): boolean {
-  return control?.status === "supported" || (control?.status === "unknown" && control.model_claim === true);
+/** Base64 of bytes, in chunks so a long clip does not overflow the argument limit. */
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
-/** Whether an unconfirmed `language_hint` carries a list of languages the catalog claims the model understands. */
-function claimsLanguages(control?: LanguageHintCapability): boolean {
-  return control?.status === "unknown" && Array.isArray(control.model_claim) && control.model_claim.length > 0;
+/** Base64 of the little-endian f32 bytes of an embedding (`known_speaker_embeddings[]`). */
+function encodeFloat32(values: ArrayLike<number>): string {
+  const view = new DataView(new ArrayBuffer(values.length * 4));
+  for (let i = 0; i < values.length; i++) view.setFloat32(i * 4, values[i]!, true);
+  return encodeBase64(new Uint8Array(view.buffer));
+}
+
+function isReference(speaker: object): speaker is KnownSpeakerReference {
+  return "audio" in speaker;
 }
 
 /**
  * The model's supported language codes: prefers the top-level `languages`
  * field (stt-server 0.1.1+), falling back to `capabilities.language_hint`'s
- * live `languages` or catalog `model_claim` (see {@link LanguageHintCapability}).
+ * live `languages` or catalog `model_claim` (see `languagesOfMatrix`).
  */
 function deriveLanguages(entry: ServerModelEntry): string[] | undefined {
   if (Array.isArray(entry.languages)) return entry.languages;
-  const hint = entry.capabilities?.language_hint;
-  return hint?.languages ?? hint?.extra?.languages ?? hint?.model_claim ?? hint?.extra?.model_claim;
+  return languagesOfMatrix(entry.capabilities);
 }
 
 /** The primary language subtag: `en-US` and `en_us` are both `en`. */
@@ -229,7 +196,7 @@ function assertCanTranslate(
 }
 
 function mapModelEntry(entry: ServerModelEntry): ModelInfo {
-  const capabilities = deriveCapabilities(entry.capabilities);
+  const capabilities = toBooleans(entry.capabilities);
   // Prefer the top-level `language_detect` field (0.1.1+) over the derived
   // capability, which only reflects a `"supported"` status.
   if (typeof entry.language_detect === "boolean") {
@@ -423,6 +390,7 @@ export class SttServerProvider implements SttProvider {
     request: BatchTranscriptionRequest,
     caps: ModelCapabilities | undefined,
     targetLanguage: string | undefined,
+    subtitleFormat: SubtitleFormat | undefined,
   ): FormData {
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename?.trim() || "recording.wav");
@@ -441,7 +409,11 @@ export class SttServerProvider implements SttProvider {
     }
     // English is what the translations endpoint does without the field, and an older server rejects the field.
     if (targetLanguage && targetLanguage !== "en") form.append("target_language", targetLanguage);
-    if (request.wordTimestamps && caps?.timestamps?.word) {
+    if (subtitleFormat) {
+      // The server renders the segment timestamps itself and refuses a model that has none, so there is no
+      // capability to check (or fall back from) here.
+      form.append("response_format", subtitleFormat);
+    } else if (request.wordTimestamps && caps?.timestamps?.word) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities", "word");
     } else if (request.wordTimestamps && caps?.timestamps?.segment) {
@@ -455,15 +427,15 @@ export class SttServerProvider implements SttProvider {
   }
 
   /**
-   * POSTs the form `build` makes to `path` and returns the parsed JSON body. When the server answers with a code that
-   * says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
+   * POSTs the form `build` makes to `path` and returns the successful response. When the server answers with a code
+   * that says the model list was stale, `refresh` runs once and the request is sent again, rebuilt.
    */
-  private async postForm(
+  private async postFormResponse(
     path: string,
     build: () => FormData,
     signal: AbortSignal | undefined,
     refresh?: () => Promise<void>,
-  ): Promise<unknown> {
+  ): Promise<Response> {
     const attempt = async (): Promise<Response> => {
       const form = build();
       try {
@@ -491,15 +463,29 @@ export class SttServerProvider implements SttProvider {
       }
     }
     if (!res.ok) throw await this.toServerError(res);
-    return res.json();
+    return res;
   }
 
-  /** `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. */
+  /** {@link postFormResponse} for an endpoint that answers with JSON. */
+  private async postForm(
+    path: string,
+    build: () => FormData,
+    signal: AbortSignal | undefined,
+    refresh?: () => Promise<void>,
+  ): Promise<unknown> {
+    return (await this.postFormResponse(path, build, signal, refresh)).json();
+  }
+
+  /**
+   * `translation` is set for the translations endpoint; its `targetLanguage` defaults to English. With
+   * `subtitleFormat` the answer is the subtitle file's text.
+   */
   private async postAudio(
     path: string,
     request: BatchTranscriptionRequest,
     translation?: { targetLanguage: string },
-  ): Promise<TranscriptionResult> {
+    subtitleFormat?: SubtitleFormat,
+  ): Promise<Response> {
     await this.ensureVersion();
     let caps = await this.resolveModelCapabilities(request.model);
 
@@ -507,23 +493,45 @@ export class SttServerProvider implements SttProvider {
       assertCanTranslate(request.model ?? "default", caps, translation.targetLanguage, request.language);
     }
 
-    const body = await this.postForm(
+    return this.postFormResponse(
       path,
-      () => this.buildForm(request, caps, translation?.targetLanguage),
+      () => this.buildForm(request, caps, translation?.targetLanguage, subtitleFormat),
       request.signal,
       async () => {
         caps = (await this.getModelsCache(true)).get(request.model ?? "")?.capabilities ?? caps;
       },
     );
-    return mapTranscriptionResponse(body as ServerTranscriptionResponse);
   }
 
-  async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/transcriptions", request);
+  /** Posts to the transcriptions or translations endpoint and reads the answer as a result, or as subtitles. */
+  private async requestAudio(
+    path: string,
+    request: BatchTranscriptionRequest & Partial<SubtitleRequest>,
+    translation?: { targetLanguage: string },
+  ): Promise<TranscriptionResult | string> {
+    const subtitleFormat = request.responseFormat;
+    const res = await this.postAudio(path, request, translation, subtitleFormat);
+    return subtitleFormat
+      ? res.text()
+      : mapTranscriptionResponse((await res.json()) as ServerTranscriptionResponse);
   }
 
-  async translate(request: BatchTranslationRequest): Promise<TranscriptionResult> {
-    return this.postAudio("/v1/audio/translations", request, {
+  /**
+   * Transcribes `request.file`. With `responseFormat: "srt"` or `"vtt"` the answer is that subtitle file's text
+   * (cues from the segment timestamps, as OpenAI's endpoint returns them); a model without segment timestamps is
+   * refused with {@link UnsupportedCapabilityError}.
+   */
+  async transcribe(request: BatchTranscriptionRequest & SubtitleRequest): Promise<string>;
+  async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult>;
+  async transcribe(request: BatchTranscriptionRequest & Partial<SubtitleRequest>): Promise<TranscriptionResult | string> {
+    return this.requestAudio("/v1/audio/transcriptions", request);
+  }
+
+  /** Translates `request.file`; `responseFormat` works as for {@link transcribe}. */
+  async translate(request: BatchTranslationRequest & SubtitleRequest): Promise<string>;
+  async translate(request: BatchTranslationRequest): Promise<TranscriptionResult>;
+  async translate(request: BatchTranslationRequest & Partial<SubtitleRequest>): Promise<TranscriptionResult | string> {
+    return this.requestAudio("/v1/audio/translations", request, {
       targetLanguage: request.targetLanguage?.trim() || "en",
     });
   }
@@ -558,6 +566,87 @@ export class SttServerProvider implements SttProvider {
       options.signal,
     )) as ServerSpeechDetectionResponse;
     return { segments: body.segments, speechRatio: body.speech_ratio, duration: body.duration };
+  }
+
+  /**
+   * Voice fingerprints of a finished recording (`POST /v1/audio/embeddings`, an stt-server extension): one embedding per
+   * segment of `options.segments`, or per speech segment the server's own detection finds. The embeddings are unit
+   * vectors of one model (see {@link SpeakerEmbeddingResult.model}); compare them with `cosineSimilarity`, `matchSpeaker`
+   * and `clusterSpeakers`. `audio` must be a WAV file, as for {@link transcribe}. Needs no loaded model and never waits
+   * behind a transcription. An stt-server older than this endpoint answers 404, which surfaces as a {@link ServerError}.
+   */
+  async embedSpeakers(
+    audio: Blob | ArrayBuffer | Uint8Array,
+    options: SpeakerEmbeddingOptions = {},
+  ): Promise<SpeakerEmbeddingResult> {
+    await this.ensureVersion();
+    const body = (await this.postForm(
+      "/v1/audio/embeddings",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        if (options.segments) {
+          form.append("segments", JSON.stringify(options.segments.map(({ start, end }) => ({ start, end }))));
+        }
+        // Base64 of the f32 bytes is a third of the size of the JSON numbers.
+        form.append("encoding_format", "base64");
+        return form;
+      },
+      options.signal,
+    )) as ServerSpeakerEmbeddingResponse;
+    return {
+      model: body.model,
+      dim: body.dim,
+      duration: body.duration,
+      segments: body.segments.map(({ start, end, embedding }) => ({
+        start,
+        end,
+        embedding: typeof embedding === "string" ? decodeFloat32(embedding) : embedding,
+      })),
+    };
+  }
+
+  /**
+   * Who spoke when in a finished recording (`POST /v1/audio/diarize`, an stt-server extension): the speech segments
+   * (`options.segments`, or the server's own detection) are fingerprinted, clustered by voice and labelled "A", "B", ...
+   * or with the names of `options.knownSpeakers`. The answer has the shape of OpenAI's `diarized_json` segments but no
+   * text: transcribe separately and join by time. `audio` must be a WAV file. Needs no loaded model, runs on the CPU
+   * and never waits behind a transcription. An stt-server older than this endpoint answers 404, which surfaces as a
+   * {@link ServerError}. The server does the clustering; `clusterSpeakers` is the same algorithm for embeddings you hold.
+   */
+  async diarize(audio: Blob | ArrayBuffer | Uint8Array, options: DiarizationOptions = {}): Promise<DiarizationResult> {
+    await this.ensureVersion();
+    const known: Array<KnownSpeakerEmbedding | KnownSpeakerReference> = options.knownSpeakers ?? [];
+    const references = known.filter(isReference);
+    if (references.length > 0 && references.length < known.length) {
+      throw new TypeError("knownSpeakers takes embeddings or reference clips, not both.");
+    }
+    // A clip travels as a data URL, which is how OpenAI takes `known_speaker_references[]`.
+    const clips = await Promise.all(
+      references.map(async ({ audio: clip }) => {
+        const bytes = new Uint8Array(await toBlob(clip).arrayBuffer());
+        return `data:audio/wav;base64,${encodeBase64(bytes)}`;
+      }),
+    );
+    return (await this.postForm(
+      "/v1/audio/diarize",
+      () => {
+        const form = new FormData();
+        form.append("file", toBlob(audio), options.filename?.trim() || "recording.wav");
+        if (options.segments) {
+          form.append("segments", JSON.stringify(options.segments.map(({ start, end }) => ({ start, end }))));
+        }
+        if (options.threshold !== undefined) form.append("threshold", String(options.threshold));
+        if (options.maxSpeakers !== undefined) form.append("max_speakers", String(options.maxSpeakers));
+        for (const { name } of known) form.append("known_speaker_names[]", name);
+        for (const clip of clips) form.append("known_speaker_references[]", clip);
+        for (const speaker of known) {
+          if (!isReference(speaker)) form.append("known_speaker_embeddings[]", encodeFloat32(speaker.embedding));
+        }
+        return form;
+      },
+      options.signal,
+    )) as DiarizationResult;
   }
 
   /**
@@ -619,11 +708,35 @@ function mapSegment(segment: ServerTranscriptionSegment): TranscriptionSegment {
   };
 }
 
+/**
+ * Puts the file-wide `words` list into the segments: each word goes to the segment that contains its midpoint (the
+ * nearest one when it falls in a gap), after the words the segment already carries. Words without any segment to
+ * go into get one segment of their own that spans them and holds the whole text.
+ */
+function placeWords(text: string, segments: TranscriptionSegment[], words: TranscriptWord[]): TranscriptionSegment[] {
+  if (segments.length === 0) {
+    return [{ text, startMs: words[0]!.startMs, endMs: words[words.length - 1]!.endMs, words }];
+  }
+  const placed = segments.map((segment) => ({ ...segment, words: [...(segment.words ?? [])] }));
+  for (const word of words) {
+    const mid = (word.startMs + word.endMs) / 2;
+    const distance = (segment: TranscriptionSegment) => Math.max(segment.startMs - mid, mid - segment.endMs, 0);
+    const home = placed.reduce((best, segment) => (distance(segment) < distance(best) ? segment : best));
+    home.words.push(word);
+  }
+  return placed;
+}
+
 function mapTranscriptionResponse(body: ServerTranscriptionResponse): TranscriptionResult {
   const result: TranscriptionResult = { text: body.text };
   if (body.language !== undefined) result.language = body.language;
   if (body.duration !== undefined) result.durationMs = Math.round(body.duration * 1000);
-  if (body.segments !== undefined) result.segments = body.segments.map(mapSegment);
+  const segments = body.segments?.map(mapSegment);
+  // Segments that already carry words (a server that nests them) keep them; the file-wide list is only used otherwise.
+  const nested = segments?.some((segment) => segment.words?.length) ?? false;
+  const words = body.words && !nested ? body.words.map(mapWord) : [];
+  if (words.length > 0) result.segments = placeWords(body.text, segments ?? [], words);
+  else if (segments !== undefined) result.segments = segments;
   if (body.x_diagnostics !== undefined) result.diagnostics = body.x_diagnostics;
   return result;
 }

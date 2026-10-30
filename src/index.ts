@@ -27,9 +27,19 @@ export type {
   ModelCapabilities,
   BatchTranscriptionRequest,
   BatchTranslationRequest,
+  SubtitleFormat,
+  SubtitleRequest,
   SpeechDetectionOptions,
   SpeechDetectionResult,
   SpeechSegment,
+  DiarizationOptions,
+  DiarizationResult,
+  DiarizedSegment,
+  KnownSpeakerEmbedding,
+  KnownSpeakerReference,
+  SpeakerEmbeddingOptions,
+  SpeakerEmbeddingResult,
+  SpeakerSegment,
   TranscriptionSegment,
   TranscriptionResult,
   SessionState,
@@ -55,6 +65,9 @@ export {
 } from "./errors";
 export type { SttErrorOptions } from "./errors";
 
+export { cosineSimilarity, matchSpeaker, clusterSpeakers } from "./speakers";
+export type { SpeakerProfile, SpeakerMatch, ClusterOptions } from "./speakers";
+
 export type { SttProvider } from "./provider";
 export { createProvider } from "./factory";
 
@@ -66,6 +79,12 @@ export {
   OpenAIProvider,
   GroqProvider,
   SttServerProvider,
+  SttServerManagement,
+  ModelManagerError,
+  CancelledError,
+  isModelBusyError,
+  managementToken,
+  MODEL_BUSY_WAIT_MS,
 } from "./providers";
 export type {
   LocalRuntimeOptions,
@@ -75,4 +94,19 @@ export type {
   OpenAIProviderOptions,
   GroqProviderOptions,
   SttServerProviderOptions,
+  SttServerManagementOptions,
+  TokenBearingConnection,
+  OperationState,
+  OperationStarted,
+  DefaultModelResponse,
+  SetDefaultResponse,
+  RemoveModelResponse,
+  ModelRecommendation,
+  SystemInfo,
+  LocalConfig,
+  HealthResponse,
+  ReadinessResponse,
+  RegistryListing,
 } from "./providers";
+export { getModelDisplaySizeBytes } from "./registry/sources";
+export type { ManagedModel } from "./registry/sources";

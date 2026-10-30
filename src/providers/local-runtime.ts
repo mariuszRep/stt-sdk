@@ -129,6 +129,9 @@ function toTranscriptionResult(body: TranscriptionResponse): TranscriptionResult
  * own doc comment / the 2026-09-05 decision) and no local runtime
  * advertises it today: `createStream()` throws
  * {@link UnsupportedCapabilityError}.
+ *
+ * @deprecated Provider-era API, kept so existing call sites keep working and removed in 1.0. Use `SttServerProvider`
+ * against stt-server (or a cloud provider) instead.
  */
 export class LocalRuntimeProvider implements SttProvider {
   readonly id: string;

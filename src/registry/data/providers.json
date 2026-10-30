@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026-10-30",
+  "providers": [
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "locality": "local",
+      "access": "free",
+      "auth": { "type": "none" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "ollama",
+          "baseUrl": "http://127.0.0.1:11434",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/api/tags",
+          "modelIdFreeText": true,
+          "privacy": { "sends": [] },
+          "quirks": { "reasoningOff": "think_false", "systemRole": "system", "structuredOutput": "json_schema" }
+        }
+      ]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "locality": "cloud",
+      "access": "plus",
+      "auth": { "type": "bearer", "keyUrl": "https://platform.openai.com/api-keys" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "openai-chat",
+          "baseUrl": "https://api.openai.com/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text", "context"], "to": "api.openai.com" },
+          "quirks": { "reasoningOff": "reasoning_effort_none", "systemRole": "system", "structuredOutput": "json_schema" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        },
+        {
+          "kind": "speech",
+          "api": "openai-audio",
+          "baseUrl": "https://api.openai.com/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": null,
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["audio"], "to": "api.openai.com" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "locality": "cloud",
+      "access": "plus",
+      "auth": { "type": "x-api-key", "keyUrl": "https://platform.claude.com/settings/keys" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "anthropic-messages",
+          "baseUrl": "https://api.anthropic.com/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text", "context"], "to": "api.anthropic.com" },
+          "quirks": {
+            "reasoningOff": "none",
+            "systemRole": "system",
+            "structuredOutput": "none",
+            "extraHeaders": { "anthropic-version": "2023-06-01" }
+          },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "locality": "cloud",
+      "access": "plus",
+      "auth": { "type": "bearer", "keyUrl": "https://aistudio.google.com/apikey" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "openai-chat",
+          "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text", "context"], "to": "generativelanguage.googleapis.com" },
+          "quirks": { "reasoningOff": "none", "systemRole": "system", "structuredOutput": "json_schema", "stripModelsPrefix": true },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "locality": "cloud",
+      "access": "plus",
+      "auth": { "type": "bearer", "keyUrl": "https://console.groq.com/keys" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "openai-chat",
+          "baseUrl": "https://api.groq.com/openai/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text", "context"], "to": "api.groq.com" },
+          "quirks": { "reasoningOff": "none", "systemRole": "system", "structuredOutput": "json_object" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        },
+        {
+          "kind": "speech",
+          "api": "openai-audio",
+          "baseUrl": "https://api.groq.com/openai/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": null,
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["audio"], "to": "api.groq.com" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "locality": "cloud",
+      "access": "plus",
+      "auth": { "type": "bearer", "keyUrl": "https://openrouter.ai/keys" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "openai-chat",
+          "baseUrl": "https://openrouter.ai/api/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text", "context"], "to": "openrouter.ai" },
+          "quirks": {
+            "reasoningOff": "reasoning_effort_none",
+            "systemRole": "system",
+            "structuredOutput": "json_schema",
+            "extraHeaders": { "X-Title": "Stanzo" }
+          },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    },
+    {
+      "id": "deepgram",
+      "name": "Deepgram",
+      "locality": "cloud",
+      "access": "plus",
+      "auth": { "type": "token", "keyUrl": "https://console.deepgram.com" },
+      "serves": [
+        {
+          "kind": "speech",
+          "api": "deepgram-listen",
+          "baseUrl": "https://api.deepgram.com/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["audio"], "to": "api.deepgram.com" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "name": "Custom OpenAI-compatible endpoint",
+      "locality": "cloud",
+      "access": "plus",
+      "template": true,
+      "auth": { "type": "bearer" },
+      "serves": [
+        {
+          "kind": "llm",
+          "api": "openai-chat",
+          "baseUrl": "https://api.example.com/v1",
+          "baseUrlEditable": true,
+          "modelsEndpoint": "/models",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text", "context"] },
+          "quirks": { "reasoningOff": "none", "systemRole": "system", "structuredOutput": "none" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "llama3.2:latest": {
+    "license": "LLAMA 3.2 COMMUNITY LICENSE AGREEMENT",
+    "template": "<|start_header_id|>system<|end_header_id|>\n\n{{ if .System }}{{ .System }}{{ end }}{{ if .Tools }}Environment: ipython\n{{ end }}<|eot_id|>",
+    "details": { "parent_model": "", "format": "gguf", "family": "llama", "families": ["llama"], "parameter_size": "3.2B", "quantization_level": "Q4_K_M" },
+    "model_info": { "general.architecture": "llama", "general.parameter_count": 3212749888, "llama.block_count": 28, "llama.context_length": 131072, "llama.embedding_length": 3072 },
+    "capabilities": ["completion", "tools"]
+  },
+  "gemma3:4b": {
+    "license": "Gemma Terms of Use",
+    "template": "{{- range $i, $_ := .Messages }}...{{ end }}",
+    "details": { "parent_model": "", "format": "gguf", "family": "gemma3", "families": ["gemma3"], "parameter_size": "4.3B", "quantization_level": "Q4_K_M" },
+    "model_info": { "general.architecture": "gemma3", "general.parameter_count": 4299915632, "gemma3.context_length": 131072, "gemma3.vision.image_size": 896 },
+    "capabilities": ["completion", "vision"]
+  },
+  "qwen3:8b": {
+    "license": "Apache License 2.0",
+    "template": "{{- if .Messages }}...{{ end }}",
+    "details": { "parent_model": "", "format": "gguf", "family": "qwen3", "families": ["qwen3"], "parameter_size": "8.2B", "quantization_level": "Q4_K_M" },
+    "model_info": { "general.architecture": "qwen3", "general.parameter_count": 8190735360, "qwen3.context_length": 40960 },
+    "capabilities": ["completion", "tools", "thinking"]
+  },
+  "nomic-embed-text:latest": {
+    "license": "Apache License 2.0",
+    "template": "{{ .Prompt }}",
+    "details": { "parent_model": "", "format": "gguf", "family": "nomic-bert", "families": ["nomic-bert"], "parameter_size": "137M", "quantization_level": "F16" },
+    "model_info": { "general.architecture": "nomic-bert", "general.parameter_count": 136727040, "nomic-bert.context_length": 2048 },
+    "capabilities": ["embedding"]
+  }
+}

@@ -1,0 +1,519 @@
+{
+  "object": "list",
+  "catalog_version": 2,
+  "generated_at": "2026-08-17T11:27:14+00:00",
+  "data": [
+    {
+      "id": "parakeet-unified-en-0.6b",
+      "name": "Parakeet Unified EN 0.6B",
+      "upstream_id": "handy-computer/parakeet-unified-en-0.6b-gguf",
+      "revision": "7e948f21b7bdbac698d3318db9d350f1096f3b6c",
+      "architecture": "parakeet",
+      "family": "parakeet",
+      "license": "cc-by-4.0",
+      "languages": [
+        "en"
+      ],
+      "model_capabilities": {
+        "streaming": true,
+        "translate": false,
+        "lang_detect": false,
+        "timestamps": "token"
+      },
+      "effective_capabilities": {
+        "prompt": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": null
+        },
+        "temperature": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": null
+        },
+        "language_hint": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": [
+            "en"
+          ]
+        },
+        "language_detect": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false
+        },
+        "translation": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false,
+          "target_languages": []
+        },
+        "timestamp_granularity": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": "token"
+        },
+        "streaming": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": true
+        },
+        "response_formats": {
+          "json": "supported",
+          "text": "supported",
+          "verbose_json": "unknown",
+          "srt": "unknown",
+          "vtt": "unknown"
+        },
+        "punctuation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "itn": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "cancellation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "long_form": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "spec_decode": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "native_sample_rate": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        }
+      },
+      "default_quant": "Q8_0",
+      "files": [
+        {
+          "filename": "parakeet-unified-en-0.6b-Q4_K_M.gguf",
+          "quant": "Q4_K_M",
+          "size_bytes": 477274496,
+          "sha256": "a8bf3de2b393bd14ead5a858c3748d5e3b07a20fdeabdd3b498fba4f463fa929"
+        },
+        {
+          "filename": "parakeet-unified-en-0.6b-Q5_K_M.gguf",
+          "quant": "Q5_K_M",
+          "size_bytes": 540795264,
+          "sha256": "f9def6f9b4e83ab7d006df3e1b676dfa1f973a3b6da232a9c99fcaa66bcd2836"
+        },
+        {
+          "filename": "parakeet-unified-en-0.6b-Q6_K.gguf",
+          "quant": "Q6_K",
+          "size_bytes": 602191232,
+          "sha256": "912c42ec3fd1afa31b7eda45684577feadf413249ca767fa912a89c4810e38d0"
+        },
+        {
+          "filename": "parakeet-unified-en-0.6b-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 731357568,
+          "sha256": "4b50b6dd862bf6e346929aaf4f5eaacec003bfa3f56462d6c874b41ef2f38795"
+        },
+        {
+          "filename": "parakeet-unified-en-0.6b-F16.gguf",
+          "quant": "F16",
+          "size_bytes": 1239114240,
+          "sha256": "4a284b229bff9dc66aa00666fdcc2419c0f82a5adb5a36f7a48a4e0713c35492"
+        },
+        {
+          "filename": "parakeet-unified-en-0.6b-F32.gguf",
+          "quant": "F32",
+          "size_bytes": 2473323520,
+          "sha256": "81d3a8c7676324a4dae977dac0f5900dc1468755fdf3b5369261bb759f17fdf3"
+        }
+      ],
+      "speed_score": 79,
+      "accuracy_score": 90,
+      "benchmark_source": "Handy catalog generated 2026-08-17; scores are derived display values, not local measurements",
+      "recommended_rank": 1,
+      "downloaded": false,
+      "installed_quant": null,
+      "installable": true,
+      "default": false,
+      "kind": "speech",
+      "provider": "stt-server",
+      "ref": "speech/stt-server/parakeet-unified-en-0.6b",
+      "locality": "local",
+      "tasks": [
+        "speech-to-text"
+      ],
+      "privacy": {
+        "sends": []
+      },
+      "description": "Fast, accurate live English transcription",
+      "parameters": "0.6B",
+      "base_model": "nvidia/parakeet-unified-en-0.6b",
+      "language_count": 1,
+      "recommended": true
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "name": "Parakeet TDT 0.6B v3",
+      "upstream_id": "handy-computer/parakeet-tdt-0.6b-v3-gguf",
+      "revision": "85ac09ea12fc4b1112fa76810059364bc6adc9de",
+      "architecture": "parakeet",
+      "family": "parakeet",
+      "license": "cc-by-4.0",
+      "languages": [
+        "bg",
+        "hr",
+        "cs",
+        "da",
+        "nl",
+        "en",
+        "et",
+        "fi",
+        "fr",
+        "de",
+        "el",
+        "hu",
+        "it",
+        "lv",
+        "lt",
+        "mt",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "es",
+        "sv",
+        "uk"
+      ],
+      "model_capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": true,
+        "timestamps": "token"
+      },
+      "effective_capabilities": {
+        "streaming": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false
+        },
+        "response_formats": {
+          "json": "supported",
+          "text": "supported",
+          "verbose_json": "unknown",
+          "srt": "unknown",
+          "vtt": "unknown"
+        }
+      },
+      "default_quant": "Q8_0",
+      "files": [
+        {
+          "filename": "parakeet-tdt-0.6b-v3-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 731357568,
+          "sha256": "4b50b6dd862bf6e346929aaf4f5eaacec003bfa3f56462d6c874b41ef2f38795"
+        }
+      ],
+      "speed_score": 79,
+      "accuracy_score": 88,
+      "recommended_rank": 7,
+      "downloaded": false,
+      "installed_quant": null,
+      "installable": true,
+      "default": false,
+      "kind": "speech",
+      "provider": "stt-server",
+      "ref": "speech/stt-server/parakeet-tdt-0.6b-v3",
+      "locality": "local",
+      "tasks": [
+        "speech-to-text"
+      ],
+      "privacy": {
+        "sends": []
+      },
+      "description": "Fast and accurate. Supports 25 European languages",
+      "parameters": "0.6B",
+      "base_model": "nvidia/parakeet-tdt-0.6b-v3",
+      "language_count": 25,
+      "recommended": false
+    },
+    {
+      "id": "whisper-tiny.en",
+      "name": "Whisper Tiny (English)",
+      "upstream_id": "handy-computer/whisper-tiny.en-gguf",
+      "revision": "becb8bcb804405dc97b380a523d9975888820986",
+      "architecture": "whisper",
+      "family": "whisper",
+      "license": "apache-2.0",
+      "languages": [
+        "en"
+      ],
+      "model_capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": false,
+        "timestamps": "segment"
+      },
+      "effective_capabilities": {
+        "prompt": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": null
+        },
+        "temperature": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": null
+        },
+        "language_hint": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": [
+            "en"
+          ]
+        },
+        "language_detect": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false
+        },
+        "translation": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false,
+          "target_languages": []
+        },
+        "timestamp_granularity": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": "segment"
+        },
+        "streaming": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false
+        },
+        "response_formats": {
+          "json": "supported",
+          "text": "supported",
+          "verbose_json": "unknown",
+          "srt": "unknown",
+          "vtt": "unknown"
+        },
+        "punctuation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "itn": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "cancellation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "long_form": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "spec_decode": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "native_sample_rate": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        }
+      },
+      "default_quant": "Q8_0",
+      "files": [
+        {
+          "filename": "whisper-tiny.en-Q4_K_M.gguf",
+          "quant": "Q4_K_M",
+          "size_bytes": 43545248,
+          "sha256": "3bfa6200aa12a21409445401f7871b5c733546dc45a29eb4871fcb3c7954e08b"
+        },
+        {
+          "filename": "whisper-tiny.en-Q5_K_M.gguf",
+          "quant": "Q5_K_M",
+          "size_bytes": 44135072,
+          "sha256": "610a75700023ffd74df1ab538353525d0a82a3e35702b923e955e69422519740"
+        },
+        {
+          "filename": "whisper-tiny.en-Q6_K.gguf",
+          "quant": "Q6_K",
+          "size_bytes": 44761760,
+          "sha256": "33b349eabeb0808562060b44dd539264f94365f09ed5317337207b955355abe4"
+        },
+        {
+          "filename": "whisper-tiny.en-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 45904544,
+          "sha256": "e8c9b73c06344307d8b346e07fbe93dd88d894627854bcff31523f1ce44394fa"
+        },
+        {
+          "filename": "whisper-tiny.en-F16.gguf",
+          "quant": "F16",
+          "size_bytes": 80058464,
+          "sha256": "7ae6eae54d625472e52b6af03b09dec586f0e948ffa5872815bb1988e973ad2b"
+        },
+        {
+          "filename": "whisper-tiny.en-F32.gguf",
+          "quant": "F32",
+          "size_bytes": 152920160,
+          "sha256": "4aaf936f214a08f199ff7daecf421eb28be273e4e4b3bba0486b98efed140045"
+        }
+      ],
+      "speed_score": 100,
+      "accuracy_score": 68,
+      "benchmark_source": "Handy catalog generated 2026-08-17; scores are derived display values, not local measurements",
+      "recommended_rank": null,
+      "downloaded": true,
+      "installed_quant": "Q8_0",
+      "installable": true,
+      "source": "catalog_download",
+      "needs_verification": false,
+      "default": true,
+      "kind": "speech",
+      "provider": "stt-server",
+      "ref": "speech/stt-server/whisper-tiny.en",
+      "locality": "local",
+      "tasks": [
+        "speech-to-text"
+      ],
+      "privacy": {
+        "sends": []
+      },
+      "description": "English speech-to-text with segment-level timestamps.",
+      "parameters": "38M",
+      "base_model": "openai/whisper-tiny.en",
+      "language_count": 1,
+      "recommended": false
+    },
+    {
+      "id": "custom-moonshine-tiny-ab12cd34",
+      "name": "My Moonshine Tiny Q5",
+      "architecture": "moonshine",
+      "languages": [
+        "en"
+      ],
+      "source": "user_folder",
+      "custom": true,
+      "evidence": "gguf_header",
+      "model_capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": false,
+        "timestamps": "none"
+      },
+      "effective_capabilities": {
+        "prompt": {
+          "status": "unknown"
+        },
+        "temperature": {
+          "status": "unknown"
+        },
+        "language_hint": {
+          "status": "unsupported"
+        },
+        "language_detect": {
+          "status": "unknown"
+        },
+        "translation": {
+          "status": "unknown"
+        },
+        "timestamp_granularity": {
+          "status": "unknown"
+        },
+        "streaming": {
+          "status": "unsupported"
+        },
+        "response_formats": {
+          "json": "supported",
+          "text": "unsupported",
+          "verbose_json": "unsupported",
+          "srt": "unknown",
+          "vtt": "unknown"
+        },
+        "punctuation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "itn": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "cancellation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "long_form": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "spec_decode": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "native_sample_rate": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        }
+      },
+      "downloaded": true,
+      "installed_quant": "Q5_K_M",
+      "installable": false,
+      "recommended_rank": null,
+      "needs_verification": true,
+      "file_path": "C:UserssomeoneAppDataLocalOpenVibeAISTT Servermodelsmoonshine-tiny-q5_k_m.gguf",
+      "default": false,
+      "kind": "speech",
+      "provider": "stt-server",
+      "ref": "speech/stt-server/custom-moonshine-tiny-ab12cd34",
+      "locality": "local",
+      "tasks": [
+        "speech-to-text"
+      ],
+      "privacy": {
+        "sends": []
+      }
+    }
+  ]
+}
