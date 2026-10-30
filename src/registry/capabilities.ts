@@ -12,7 +12,7 @@ export type CapabilityStatus = (typeof CAPABILITY_STATUSES)[number];
 /**
  * Where a status comes from. `loaded_model` is the engine's answer for a loaded model, `gguf_header` a drop-in model's
  * own file, `provider_api` a provider's own listing (Ollama `/api/show`), `learned` a downgrade a call taught us,
- * `cloud_claim` our data file. A source may send others: the field is open.
+ * `cloud_claim` our data file, `builtin` code compiled into the server. A source may send others: the field is open.
  */
 export const CAPABILITY_EVIDENCE = [
   "catalog_claim",
@@ -21,6 +21,7 @@ export const CAPABILITY_EVIDENCE = [
   "provider_api",
   "learned",
   "cloud_claim",
+  "builtin",
 ] as const;
 export type CapabilityEvidence = (typeof CAPABILITY_EVIDENCE)[number];
 

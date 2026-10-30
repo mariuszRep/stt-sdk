@@ -30,6 +30,7 @@ export type {
   CloudModelInfo,
   ModelEditorial,
   ModelEntry,
+  CatalogVersion,
   Readiness,
   ModelState,
   ProviderApi,
@@ -61,7 +62,17 @@ export type { CapabilityStatus, CapabilityEvidence, CapabilityControl, ControlCa
 
 export { STT_SERVER_PROVIDER, OLLAMA_PROVIDER, canonicalOllamaTag, formatModelRef, parseModelRef, sttServerModelRef, ollamaModelRef } from "./ref";
 
-export type { ManagedModel, SttServerV1Model, OllamaTag, OllamaTagsResponse, OllamaShowResponse } from "./sources";
+export type {
+  ManagedModel,
+  SttServerLabels,
+  SttServerCatalogText,
+  SttServerV1Model,
+  SttServerCatalogStamp,
+  SttServerRegistryDocument,
+  OllamaTag,
+  OllamaTagsResponse,
+  OllamaShowResponse,
+} from "./sources";
 
 export { fromSttServerManaged, fromSttServerV1Model, sttServerManagedState, sttServerV1State } from "./adapters/stt-server";
 export { fromOllama } from "./adapters/ollama";

@@ -10,10 +10,11 @@
  */
 
 import { fromSttServerManaged, sttServerManagedState } from "../registry/adapters/stt-server";
+import { compact } from "../registry/adapters/shared";
 import type { CapabilityMatrix } from "../registry/capabilities";
 import { withUniqueNames } from "../registry/names";
-import type { ManagedModel } from "../registry/sources";
-import type { ModelEntry, ModelState } from "../registry/types";
+import type { ManagedModel, SttServerCatalogStamp, SttServerRegistryDocument } from "../registry/sources";
+import type { CatalogVersion, ModelEntry, ModelState } from "../registry/types";
 
 export interface OperationState {
   operation_id: string;
@@ -63,6 +64,18 @@ export interface SystemInfo {
   };
   process?: { pid?: number; uptime_ms?: number; rss_bytes?: number };
   server?: { version?: string; host?: string; port?: number; data_dir?: string };
+  /** The embedded model catalog's version; absent on an older server. */
+  catalog?: SttServerCatalogStamp;
+}
+
+/** The models of {@link SttServerManagement.listRegistryEntries}: entries and states line up by `ref`. */
+export interface RegistryListing {
+  entries: ModelEntry[];
+  states: ModelState[];
+  /** The server's catalog number (`2`), when the server reports it (`GET /v1/registry`). Not comparable with the SDK's date strings. */
+  catalogVersion?: CatalogVersion;
+  /** When the server's catalog was generated (ISO 8601 text), when it reports it. */
+  generatedAt?: string;
 }
 
 export interface LocalConfig {
@@ -254,10 +267,24 @@ export class SttServerManagement {
   }
 
   /**
-   * The whole catalog (and any drop-in model) as registry entries, with what is installed, verified and default as state.
-   * Entries and states line up by `ref`.
+   * Every model the server serves as registry entries, with what is installed, verified and default as state. Entries
+   * and states line up by `ref`. A current server answers `GET /v1/registry` itself, in the registry's own shape: the
+   * catalog and any drop-in model (whether installed or not) and the models compiled into it (`builtin`, the speaker
+   * and VAD models), so filter on `kind` for a list of speech models. An older server has no such route (404): its
+   * `/models/manage` rows go through the adapters instead, speech models only and with no catalog version.
    */
-  async listRegistryEntries(): Promise<{ entries: ModelEntry[]; states: ModelState[] }> {
+  async listRegistryEntries(): Promise<RegistryListing> {
+    try {
+      const body = await this.request<SttServerRegistryDocument>("/v1/registry");
+      return compact({
+        entries: withUniqueNames(body.data),
+        states: body.states,
+        catalogVersion: body.catalog_version,
+        generatedAt: body.generated_at,
+      });
+    } catch (err) {
+      if (!(err instanceof ModelManagerError && err.status === 404)) throw err;
+    }
     const rows = await this.listManagedModels();
     return { entries: rows.map(fromSttServerManaged), states: rows.map(sttServerManagedState) };
   }

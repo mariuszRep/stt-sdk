@@ -23,8 +23,9 @@
     "baseModel": { "type": "string" },
     "license": { "type": "string" },
     "languages": { "type": "array", "items": { "type": "string" } },
-    "local": { "$ref": "#/$defs/localInfo" },
-    "builtin": { "type": "boolean" },
+    "languageCount": { "type": "integer", "minimum": 0, "description": "How many languages the catalog counts, as the source states it." },
+    "local": { "$ref": "#/$defs/localInfo", "description": "What the weights are made of; a built-in model has it too (its files, with size and sha256)." },
+    "builtin": { "type": "boolean", "description": "Compiled into the app or the server: always installed, nothing to download." },
     "cloud": { "$ref": "#/$defs/cloudInfo" },
     "editorial": { "$ref": "#/$defs/editorial" }
   },
@@ -56,7 +57,7 @@
       "properties": {
         "status": { "enum": ["supported", "unsupported", "unknown"] },
         "reason": { "type": ["string", "null"] },
-        "evidence": { "type": "string", "description": "catalog_claim, gguf_header, loaded_model, provider_api, learned, cloud_claim; a source may send others." },
+        "evidence": { "type": "string", "description": "catalog_claim, gguf_header, loaded_model, provider_api, learned, cloud_claim, builtin; a source may send others." },
         "mechanism": { "type": ["string", "null"] },
         "extra": { "type": "object" }
       }
@@ -200,6 +201,19 @@
         "schemaVersion": { "const": 1 },
         "catalogVersion": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
         "providers": { "type": "array", "items": { "$ref": "#/$defs/providerDescriptor" } }
+      }
+    },
+    "registryDocument": {
+      "type": "object",
+      "description": "The body of stt-server's GET /v1/registry: `data` and `states` have the same length and order. The server numbers its catalog (catalog_version: 2); the SDK's own data files use a review date.",
+      "required": ["data", "states"],
+      "properties": {
+        "object": { "const": "list" },
+        "schema_version": { "const": 1 },
+        "catalog_version": { "type": ["integer", "string"] },
+        "generated_at": { "type": "string" },
+        "data": { "type": "array", "items": { "$ref": "#" } },
+        "states": { "type": "array", "items": { "$ref": "#/$defs/modelState" } }
       }
     },
     "cloudModelRecord": {

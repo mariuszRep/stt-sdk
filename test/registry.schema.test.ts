@@ -14,7 +14,8 @@ import {
   type ManagedModel,
 } from "../src/registry";
 import manage from "./fixtures/registry/stt-server-manage.json";
-import { entryProblems, stateProblems } from "./registry-schema";
+import registry from "./fixtures/registry/stt-server-registry.json";
+import { entryProblems, registryDocumentProblems, stateProblems } from "./registry-schema";
 
 const defs = MODEL_ENTRY_SCHEMA.$defs as Record<string, { enum?: unknown[]; properties?: Record<string, { enum?: unknown[] }> }>;
 
@@ -74,5 +75,19 @@ describe("model-entry.v1.json", () => {
   it("describes the live state of a model", () => {
     expect(stateProblems({ ref: "speech/stt-server/x", installed: true, default: false, needsKey: false, reachable: true })).toEqual([]);
     expect(stateProblems({ ref: "speech/stt-server/x", installed: true })).not.toEqual([]);
+  });
+
+  it("lets a built-in model carry its weights under local.files", () => {
+    const silero = registry.data.find((e) => e.id === "silero-v5")!;
+    expect(silero).toMatchObject({ builtin: true, local: { files: [{ sha256: expect.stringMatching(/^[0-9a-f]{64}$/) }] } });
+    expect(entryProblems(silero)).toEqual([]);
+  });
+
+  it("describes the body of GET /v1/registry, whose catalog version is a number (or a date)", () => {
+    expect(registryDocumentProblems(registry)).toEqual([]);
+    expect(registryDocumentProblems({ ...registry, catalog_version: "2026-10-30" })).toEqual([]);
+    expect(registryDocumentProblems({ ...registry, catalog_version: true })).not.toEqual([]);
+    expect(registryDocumentProblems({ ...registry, data: [{ ...registry.data[0]!, kind: "juggling" }] })).not.toEqual([]);
+    expect(registryDocumentProblems({ ...registry, states: undefined })).not.toEqual([]);
   });
 });

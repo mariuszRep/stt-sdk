@@ -106,6 +106,7 @@ export type {
   LocalConfig,
   HealthResponse,
   ReadinessResponse,
+  RegistryListing,
 } from "./providers";
 export { getModelDisplaySizeBytes } from "./registry/sources";
 export type { ManagedModel } from "./registry/sources";

@@ -82,7 +82,10 @@ export interface LocalModelFile {
   sha256?: string;
 }
 
-/** What a locally stored model is made of. Absent for a cloud model and for a built-in. */
+/**
+ * What a locally stored model is made of. Absent for a cloud model. A built-in (compiled into the server) has no
+ * download, but its weights are still described here: `files` carries their size and SHA-256.
+ */
 export interface LocalModelInfo {
   files?: LocalModelFile[];
   /** The pinned upstream revision the files were taken from. */
@@ -142,8 +145,10 @@ export interface ModelEntry {
   license?: string;
   /** ISO codes. */
   languages?: string[];
+  /** How many languages the catalog counts for the model, as the source states it (a drop-in has none). */
+  languageCount?: number;
   local?: LocalModelInfo;
-  /** Compiled into the app or the server: no files, always installed. */
+  /** Compiled into the app or the server: always installed, nothing to download (`local.files` still names its weights). */
   builtin?: boolean;
   cloud?: CloudModelInfo;
   editorial?: ModelEditorial;
@@ -304,6 +309,12 @@ export interface CloudModelClaims {
   translation?: boolean;
   streaming?: boolean;
 }
+
+/**
+ * The version of a model catalog. The SDK's own data files (`providers.json`, `cloud-models.json`) use the date they
+ * were reviewed (`2026-10-30`); stt-server numbers the catalog it embeds (`2`). Compare only like with like.
+ */
+export type CatalogVersion = number | string;
 
 export interface CloudModelCatalog {
   schemaVersion: typeof MODEL_ENTRY_SCHEMA_VERSION;

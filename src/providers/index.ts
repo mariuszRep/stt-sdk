@@ -26,4 +26,5 @@ export type {
   LocalConfig,
   HealthResponse,
   ReadinessResponse,
+  RegistryListing,
 } from "./stt-server-management";

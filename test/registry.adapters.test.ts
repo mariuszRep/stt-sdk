@@ -17,13 +17,17 @@ import {
   type SttServerV1Model,
 } from "../src/registry";
 import manage from "./fixtures/registry/stt-server-manage.json";
+import manageLabelled from "./fixtures/registry/stt-server-manage-labelled.json";
 import v1 from "./fixtures/registry/stt-server-v1-models.json";
+import v1Labelled from "./fixtures/registry/stt-server-v1-models-labelled.json";
 import tags from "./fixtures/registry/ollama-tags.json";
 import shows from "./fixtures/registry/ollama-show.json";
 import { entryProblems, stateProblems } from "./registry-schema";
 
 const rows = manage.data as unknown as ManagedModel[];
 const v1Rows = v1.data as unknown as SttServerV1Model[];
+const labelledRows = manageLabelled.data as unknown as ManagedModel[];
+const labelledV1Rows = v1Labelled.data as unknown as SttServerV1Model[];
 
 /** What every entry must satisfy, whatever made it. */
 function expectSound(entry: ModelEntry): void {
@@ -152,6 +156,94 @@ describe("fromSttServerV1Model", () => {
     const entry = fromSttServerV1Model({ id: "m", capabilities: { language_detect: { status: "unknown", model_claim: true } }, language_detect: true });
     expect(entry.capabilities.language_detect).toMatchObject({ status: "supported", model_claim: true });
     expect(entry.name).toBe("m");
+  });
+});
+
+describe("fromSttServerManaged on a current server's rows", () => {
+  const [parakeet, tdt, tiny, custom] = labelledRows.map(fromSttServerManaged) as [ModelEntry, ModelEntry, ModelEntry, ModelEntry];
+
+  it("turns every row into a schema-valid entry with a state that lines up by ref", () => {
+    for (const row of labelledRows) {
+      const entry = fromSttServerManaged(row);
+      expectSound(entry);
+      expect(entry.ref).toBe(row.ref);
+      expect(stateProblems(sttServerManagedState(row))).toEqual([]);
+      expect(sttServerManagedState(row).ref).toBe(entry.ref);
+    }
+  });
+
+  it("carries the catalog text, size class and language count the server sends", () => {
+    expect(parakeet).toMatchObject({
+      description: "Fast, accurate live English transcription",
+      parameters: "0.6B",
+      baseModel: "nvidia/parakeet-unified-en-0.6b",
+      languageCount: 1,
+    });
+    expect(tdt).toMatchObject({ parameters: "0.6B", baseModel: "nvidia/parakeet-tdt-0.6b-v3", languageCount: 25 });
+    expect(tdt.languages).toHaveLength(25);
+    expect(tiny).toMatchObject({ parameters: "38M", languageCount: 1 });
+  });
+
+  it("takes recommended from the server: a rank without the flag is not recommended", () => {
+    expect(parakeet.editorial).toMatchObject({ recommended: true, recommendedRank: 1 });
+    expect(tdt.editorial).toEqual({ recommended: false, recommendedRank: 7, speedScore: 79, accuracyScore: 88, source: "handy" });
+    expect(tiny.editorial?.recommended).toBe(false);
+    // The same rank on an older server, which sent no flag, means recommended.
+    expect(fromSttServerManaged({ ...labelledRows[1]!, recommended: undefined }).editorial?.recommended).toBe(true);
+  });
+
+  it("gives a drop-in its labels and no catalog text", () => {
+    expect(custom).toMatchObject({ ref: "speech/stt-server/custom-moonshine-tiny-ab12cd34", kind: "speech", provider: "stt-server", locality: "local", tasks: ["speech-to-text"], privacy: { sends: [] } });
+    expect(custom.editorial).toBeUndefined();
+    for (const field of ["description", "parameters", "baseModel", "languageCount"]) expect(custom, field).not.toHaveProperty(field);
+  });
+
+  it("matches what the adapter derives for an older server, plus the new text", () => {
+    const older = rows.map(fromSttServerManaged);
+    expect(parakeet).toEqual({ ...older[0], description: "Fast, accurate live English transcription", parameters: "0.6B", baseModel: "nvidia/parakeet-unified-en-0.6b", languageCount: 1 });
+    expect(custom).toEqual(older[2]);
+  });
+
+  it("prefers the server's labels to what it would derive", () => {
+    const entry = fromSttServerManaged({
+      ...labelledRows[0]!,
+      kind: "speaker",
+      provider: "other",
+      ref: "speaker/other/x",
+      locality: "cloud",
+      tasks: ["speaker-embedding", "vision"],
+      privacy: { sends: ["audio"], to: "api.example.com" },
+    });
+    expect(entry).toMatchObject({ ref: "speaker/other/x", kind: "speaker", provider: "other", locality: "cloud", tasks: ["speaker-embedding", "vision"], privacy: { sends: ["audio"], to: "api.example.com" } });
+    expect(sttServerManagedState({ ...labelledRows[0]!, ref: "speaker/other/x" }).ref).toBe("speaker/other/x");
+  });
+
+  it("derives the labels a row leaves out, one by one", () => {
+    const entry = fromSttServerManaged({ id: "tiny", name: "tiny", downloaded: true, default: false, kind: "speech", tasks: [] });
+    expect(entry).toMatchObject({ ref: "speech/stt-server/tiny", provider: "stt-server", locality: "local", tasks: ["speech-to-text"], privacy: { sends: [] } });
+  });
+});
+
+describe("fromSttServerV1Model on a current server's entries", () => {
+  const [tiny, parakeet] = labelledV1Rows.map(fromSttServerV1Model) as [ModelEntry, ModelEntry];
+
+  it("turns every entry into a schema-valid entry, keeping the server's ref in the state", () => {
+    for (const row of labelledV1Rows) {
+      expectSound(fromSttServerV1Model(row));
+      expect(sttServerV1State(row).ref).toBe(row.ref);
+    }
+  });
+
+  it("carries the labels and catalog text, and keeps the live matrix", () => {
+    expect(tiny).toMatchObject({ ref: "speech/stt-server/whisper-tiny.en", provider: "stt-server", tasks: ["speech-to-text"], parameters: "38M", baseModel: "openai/whisper-tiny.en", languageCount: 1, architecture: "whisper" });
+    expect(tiny.description).toBe("English speech-to-text with segment-level timestamps.");
+    expect(tiny.capabilities.prompt).toMatchObject({ status: "supported", evidence: "loaded_model" });
+    expect(parakeet).toMatchObject({ parameters: "0.6B", languageCount: 1 });
+  });
+
+  it("matches what the adapter derives for an older server, plus the new text", () => {
+    const older = v1Rows.map(fromSttServerV1Model) as [ModelEntry, ModelEntry];
+    expect(tiny).toEqual({ ...older[0], description: "English speech-to-text with segment-level timestamps.", parameters: "38M", baseModel: "openai/whisper-tiny.en", languageCount: 1 });
   });
 });
 

@@ -201,7 +201,7 @@ import { fromOllama, fromSttServerManaged, listCloudEntries, parseModelRef, toBo
 import { SttServerManagement } from "@open-vibe-ai/stt-sdk";
 
 const management = new SttServerManagement({ baseUrl, token: adminToken });
-const { entries: speech, states } = await management.listRegistryEntries(); // stt-server's catalog + install state
+const { entries: speech, states } = await management.listRegistryEntries(); // stt-server's models + install state
 const ai = fromOllama(await (await fetch("http://127.0.0.1:11434/api/tags")).json());   // + shows: { [name]: /api/show body }
 const cloud = listCloudEntries();                                                         // known cloud models (Plus)
 const list = [...speech, ...ai, ...cloud];
@@ -227,7 +227,14 @@ map the old flat ids (an Ollama name without a tag is `:latest`).
 
 **Adapters** turn what a source says into entries: `fromSttServerManaged` (`GET /models/manage`),
 `fromSttServerV1Model` (`GET /v1/models`), `fromOllama` (`/api/tags`, each optionally with its `/api/show`) and
-`fromCloudCatalog`. `toBooleans(matrix)` is the one derivation of the simple `ModelCapabilities` booleans (`unknown` is
+`fromCloudCatalog`. A current stt-server labels its own rows (`kind`, `provider`, `ref`, `locality`, `tasks`,
+`privacy`, `recommended`, and the catalog's `description`, `parameters`, `base_model`, `language_count`) and the two
+stt-server adapters use those labels; they derive them only for an older server that sends none.
+`SttServerManagement.listRegistryEntries()` asks a current server for `GET /v1/registry`, which already answers in the
+registry's shape (and also lists the models compiled into the server, `builtin`, whose weights' size and SHA-256 are
+under `local.files`: filter on `kind` for speech models) and falls back to `/models/manage` and the adapters on a 404.
+The result carries the server's `catalogVersion` (a number; the SDK's own data files use a review date, the type is
+`CatalogVersion`) and `generatedAt` when the server reports them. `toBooleans(matrix)` is the one derivation of the simple `ModelCapabilities` booleans (`unknown` is
 not supported); `SttServerProvider` uses it too.
 
 **Data**: `BUILTIN_PROVIDERS` (`data/providers.json`: Ollama and the cloud providers with endpoint, auth, quirks,

@@ -16,6 +16,7 @@ function checker(pointer: string): Check {
 /** The problems of a value against the registry's JSON Schema (empty = valid). */
 export const entryProblems = checker("");
 export const stateProblems = checker("#/$defs/modelState");
+export const registryDocumentProblems = checker("#/$defs/registryDocument");
 export const providerProblems = checker("#/$defs/providerDescriptor");
 export const providerCatalogProblems = checker("#/$defs/providerCatalog");
 export const cloudCatalogProblems = checker("#/$defs/cloudModelCatalog");

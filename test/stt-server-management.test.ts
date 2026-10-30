@@ -10,6 +10,7 @@ import {
 } from "../src";
 import { entryProblems } from "./registry-schema";
 import manage from "./fixtures/registry/stt-server-manage.json";
+import registry from "./fixtures/registry/stt-server-registry.json";
 
 // These tests moved here with the client from the app (`lib/models/model-manager.test.ts`); the assertions are the same.
 
@@ -18,6 +19,13 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+const notFound = () => jsonResponse({ error: { code: "not_found", message: "no such route" } }, 404);
+
+/** A server from before `GET /v1/registry`: no such route, `/models/manage` as it always was. */
+function olderServer(manageBody: unknown): typeof fetch {
+  return (async (url: string) => (String(url).endsWith("/v1/registry") ? notFound() : jsonResponse(manageBody))) as unknown as typeof fetch;
 }
 
 function makeClient(fetchImpl: typeof fetch) {
@@ -64,28 +72,100 @@ describe("SttServerManagement", () => {
     expect((await client.listManagedModels()).map((m) => m.name)).toEqual(["Cohere Transcribe", "Cohere Transcribe (Arabic)"]);
   });
 
-  it("listRegistryEntries returns the catalog as schema-valid entries with their state", async () => {
-    const client = makeClient((async () => jsonResponse(manage)) as unknown as typeof fetch);
+  it("listRegistryEntries asks the server for its registry, with the admin token, and keeps what it answers", async () => {
+    let seenUrl = "";
+    let seenAuth = "";
+    const client = makeClient((async (url: string, init?: RequestInit) => {
+      seenUrl = String(url);
+      seenAuth = (init?.headers as Record<string, string>).Authorization!;
+      return jsonResponse(registry);
+    }) as unknown as typeof fetch);
+    const listing = await client.listRegistryEntries();
+    expect(seenUrl).toBe("http://127.0.0.1:54321/v1/registry");
+    expect(seenAuth).toBe("Bearer admin-token");
+    expect(listing.entries.map((e) => e.ref)).toEqual(registry.data.map((e) => e.ref));
+    expect(listing.entries.flatMap((e) => entryProblems(e))).toEqual([]);
+    expect(listing.states.map((s) => s.ref)).toEqual(listing.entries.map((e) => e.ref));
+    expect(listing.catalogVersion).toBe(2);
+    expect(listing.generatedAt).toBe("2026-08-17T11:27:14+00:00");
+  });
+
+  it("listRegistryEntries includes the models compiled into the server, with the size and hash of their weights", async () => {
+    const client = makeClient((async () => jsonResponse(registry)) as unknown as typeof fetch);
     const { entries, states } = await client.listRegistryEntries();
-    expect(entries.map((e) => e.ref)).toEqual([
+    const builtins = entries.filter((e) => e.builtin);
+    expect(builtins.map((e) => [e.kind, e.id])).toEqual([["speaker", "campplus-voxceleb-v1"], ["vad", "silero-v5"]]);
+    expect(builtins[1]!.local?.files?.[0]).toEqual({
+      filename: "silero_v5_16k.f32",
+      quant: "F32",
+      sizeBytes: 1238532,
+      sha256: "b8df2e6e32753b7aa47ab59571b0d9d0b490a223f8dc9118bb388efeaec6f8e3",
+    });
+    expect(states.filter((s) => s.ref.startsWith("speaker/") || s.ref.startsWith("vad/")).map((s) => [s.installed, s.default])).toEqual([[true, true], [true, true]]);
+  });
+
+  it("listRegistryEntries gives two entries that share a name a name each", async () => {
+    const twin = (id: string) => ({ ...registry.data[1]!, ref: `speech/stt-server/${id}`, id, name: "Cohere Transcribe" });
+    const client = makeClient((async () =>
+      jsonResponse({
+        ...registry,
+        data: [twin("cohere-transcribe-03-2026"), twin("cohere-transcribe-arabic-07-2026")],
+        states: [],
+      })) as unknown as typeof fetch);
+    expect((await client.listRegistryEntries()).entries.map((e) => e.name)).toEqual(["Cohere Transcribe", "Cohere Transcribe (Arabic)"]);
+  });
+
+  it("listRegistryEntries takes the catalog version as the server writes it, a number or a date", async () => {
+    const versions = [3, "2026-10-30"];
+    for (const version of versions) {
+      const client = makeClient((async () => jsonResponse({ ...registry, catalog_version: version })) as unknown as typeof fetch);
+      expect((await client.listRegistryEntries()).catalogVersion).toBe(version);
+    }
+    const bare = makeClient((async () => jsonResponse({ data: [], states: [] })) as unknown as typeof fetch);
+    expect(await bare.listRegistryEntries()).toEqual({ entries: [], states: [] });
+  });
+
+  it("listRegistryEntries falls back to the adapters on a server with no /v1/registry", async () => {
+    const calls: string[] = [];
+    const inner = olderServer(manage);
+    const client = makeClient((async (url: string, init?: RequestInit) => {
+      calls.push(String(url));
+      return inner(url, init);
+    }) as unknown as typeof fetch);
+    const listing = await client.listRegistryEntries();
+    expect(calls).toEqual(["http://127.0.0.1:54321/v1/registry", "http://127.0.0.1:54321/models/manage"]);
+    expect(listing.entries.map((e) => e.ref)).toEqual([
       "speech/stt-server/parakeet-unified-en-0.6b",
       "speech/stt-server/whisper-tiny.en",
       "speech/stt-server/custom-moonshine-tiny-ab12cd34",
     ]);
-    expect(entries.flatMap((e) => entryProblems(e))).toEqual([]);
-    expect(states.map((s) => s.ref)).toEqual(entries.map((e) => e.ref));
-    expect(states.map((s) => [s.installed, s.default])).toEqual([[false, false], [true, true], [true, false]]);
+    expect(listing.entries.flatMap((e) => entryProblems(e))).toEqual([]);
+    expect(listing.states.map((s) => s.ref)).toEqual(listing.entries.map((e) => e.ref));
+    expect(listing.states.map((s) => [s.installed, s.default])).toEqual([[false, false], [true, true], [true, false]]);
+    expect(listing.catalogVersion).toBeUndefined();
   });
 
-  it("listRegistryEntries gives two catalog entries that share a name a name each", async () => {
-    const client = makeClient((async () =>
-      jsonResponse({
+  it("listRegistryEntries fallback gives two catalog entries that share a name a name each", async () => {
+    const client = makeClient(
+      olderServer({
         data: [
           { id: "cohere-transcribe-03-2026", name: "Cohere Transcribe", downloaded: false, default: false },
           { id: "cohere-transcribe-arabic-07-2026", name: "Cohere Transcribe", downloaded: false, default: false },
         ],
-      })) as unknown as typeof fetch);
+      }),
+    );
     expect((await client.listRegistryEntries()).entries.map((e) => e.name)).toEqual(["Cohere Transcribe", "Cohere Transcribe (Arabic)"]);
+  });
+
+  it("listRegistryEntries does not hide a failure other than a missing route", async () => {
+    const broken = makeClient((async () => jsonResponse({ error: { code: "internal_error", message: "boom" } }, 500)) as unknown as typeof fetch);
+    await expect(broken.listRegistryEntries()).rejects.toMatchObject({ code: "internal_error", status: 500 });
+    const denied = makeClient((async () => jsonResponse({ error: { code: "invalid_token", message: "no" } }, 401)) as unknown as typeof fetch);
+    await expect(denied.listRegistryEntries()).rejects.toMatchObject({ status: 401 });
+    const gone = makeClient((async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch);
+    await expect(gone.listRegistryEntries()).rejects.toMatchObject({ code: "connection_error" });
   });
 
   it("getHealth sends no Authorization header", async () => {

@@ -5,15 +5,44 @@
 
 import { languagesOfMatrix, normalizeMatrix } from "../capabilities";
 import { STT_SERVER_PROVIDER, sttServerModelRef } from "../ref";
-import { getModelDisplaySizeBytes, type ManagedModel, type SttServerV1Model } from "../sources";
-import type { ModelEditorial, ModelEntry, ModelState } from "../types";
+import { getModelDisplaySizeBytes, type ManagedModel, type SttServerCatalogText, type SttServerLabels, type SttServerV1Model } from "../sources";
+import { PRIMARY_TASK, type ModelEditorial, type ModelEntry, type ModelState } from "../types";
 import { compact, localPrivacy } from "./shared";
+
+/** The reference of a row: the server's own, else the one an older server's `id` makes. */
+const refOf = (row: SttServerLabels & { id: string }): string => row.ref ?? sttServerModelRef(row.id);
+
+/**
+ * The registry identity of a row. A current server labels every row (client-contract.md §4.5) and its labels win; for an
+ * older one the row is what the server has always served, a local speech model.
+ */
+function labelsOf(row: SttServerLabels & { id: string }) {
+  const kind = row.kind ?? "speech";
+  return {
+    ref: refOf(row),
+    kind,
+    provider: row.provider ?? STT_SERVER_PROVIDER,
+    tasks: row.tasks?.length ? row.tasks : [PRIMARY_TASK[kind]],
+    locality: row.locality ?? ("local" as const),
+    privacy: row.privacy ?? localPrivacy(),
+  };
+}
+
+/** The catalog text a current server sends (a drop-in has none of it). */
+const catalogTextOf = (row: SttServerCatalogText) => ({
+  description: row.description,
+  parameters: row.parameters,
+  baseModel: row.base_model,
+  languageCount: row.language_count,
+});
 
 function editorialOf(row: ManagedModel): ModelEditorial | undefined {
   const rank = row.recommended_rank ?? undefined;
+  // A current server says whether a model is recommended (five models have a rank without being recommended); an older
+  // one sent the rank of a recommended model only, so a rank meant recommended.
   const recommended = row.recommended ?? (rank === undefined ? undefined : true);
   if (recommended === undefined && row.speed_score == null && row.accuracy_score == null) return undefined;
-  // `/models/manage` carries the rank of a recommended model only, so a catalog row without one is not recommended.
+  // A catalog row without a flag or a rank is not recommended.
   return compact({
     recommended: recommended ?? false,
     recommendedRank: rank,
@@ -36,21 +65,14 @@ export function fromSttServerManaged(row: ManagedModel): ModelEntry {
     custom: row.custom,
   });
   return compact({
-    ref: sttServerModelRef(row.id),
-    kind: "speech" as const,
-    provider: STT_SERVER_PROVIDER,
+    ...labelsOf(row),
     id: row.id,
     name: row.name,
-    description: row.description,
-    tasks: ["speech-to-text" as const],
-    locality: "local" as const,
+    ...catalogTextOf(row),
     access: "free" as const,
-    privacy: localPrivacy(),
     capabilities: normalizeMatrix(row.effective_capabilities),
     family: row.family,
     architecture: row.architecture,
-    parameters: row.parameters,
-    baseModel: row.base_model,
     license: row.license,
     languages: row.languages,
     local: Object.keys(local).length ? local : undefined,
@@ -61,7 +83,7 @@ export function fromSttServerManaged(row: ManagedModel): ModelEntry {
 /** What a `/models/manage` row says about the model now. */
 export function sttServerManagedState(row: ManagedModel): ModelState {
   return compact({
-    ref: sttServerModelRef(row.id),
+    ref: refOf(row),
     installed: row.downloaded,
     needsVerification: row.needs_verification,
     default: row.default,
@@ -71,8 +93,9 @@ export function sttServerManagedState(row: ManagedModel): ModelState {
 
 /**
  * One `/v1/models` entry as a registry entry. The catalog fields the manage view has (files, scores, license) are not
- * in it; the capabilities are the live ones where the server has loaded the model. As in `SttServerProvider`, the
- * top-level `language_detect` and `languages` win over the matrix.
+ * in it, though a current server does send the labels and the catalog text; the capabilities are the live ones where the
+ * server has loaded the model. As in `SttServerProvider`, the top-level `language_detect` and `languages` win over the
+ * matrix.
  */
 export function fromSttServerV1Model(model: SttServerV1Model): ModelEntry {
   const capabilities = normalizeMatrix(model.capabilities);
@@ -81,15 +104,11 @@ export function fromSttServerV1Model(model: SttServerV1Model): ModelEntry {
   }
   const architecture = (model.capabilities as Record<string, unknown> | undefined)?.arch;
   return compact({
-    ref: sttServerModelRef(model.id),
-    kind: "speech" as const,
-    provider: STT_SERVER_PROVIDER,
+    ...labelsOf(model),
     id: model.id,
     name: model.name?.trim() ? model.name : model.id,
-    tasks: ["speech-to-text" as const],
-    locality: "local" as const,
+    ...catalogTextOf(model),
     access: "free" as const,
-    privacy: localPrivacy(),
     capabilities,
     architecture: typeof architecture === "string" ? architecture : undefined,
     languages: model.languages ?? languagesOfMatrix(model.capabilities),
@@ -98,5 +117,5 @@ export function fromSttServerV1Model(model: SttServerV1Model): ModelEntry {
 
 /** A callable model is installed and verified. */
 export function sttServerV1State(model: SttServerV1Model): ModelState {
-  return { ref: sttServerModelRef(model.id), installed: true, default: model.default === true };
+  return { ref: refOf(model), installed: true, default: model.default === true };
 }
