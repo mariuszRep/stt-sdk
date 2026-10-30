@@ -166,7 +166,7 @@ const provider = createProvider(descriptor);
   `transcribe()`, `createStream()`. Local and cloud adapters expose the same contract.
 - **Capabilities** — `ProviderInfo` / `ProviderCapability` normalized across adapters.
 - **Runtime descriptors** — `RuntimeConnectionDescriptor` (versioned, server-issued).
-- **Models** — `ModelInfo`.
+- **Models** — `ModelInfo`; the model list with flags is the [Registry](#registry) (`/registry` subpath).
 - **Batch** — `BatchTranscriptionRequest`, `TranscriptionResult`, `TranscriptionSegment`.
 - **Streaming** — `StreamConfig`, `StreamSession`, `SessionState`, and protocol-v1
   `TranscriptEvent` union (`ready`, `partial`, `final`, `lagging`, `error`, `closed`).
@@ -188,6 +188,61 @@ const provider = createProvider(descriptor);
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw
 `UnsupportedCapabilityError` so unimplemented behavior is explicit and typed.
+
+## Registry
+
+`@open-vibe-ai/stt-sdk/registry` is the model registry: ONE standard list of every model the estate uses (speech,
+AI, cloud and local), in the shape of stt-server's catalog extended to every kind. It is data and adapters only; it
+calls no provider. The desktop app calls cloud providers itself and keeps API keys in the user's account, so nothing
+here holds a key.
+
+```ts
+import { fromOllama, fromSttServerManaged, listCloudEntries, parseModelRef, toBooleans } from "@open-vibe-ai/stt-sdk/registry";
+import { SttServerManagement } from "@open-vibe-ai/stt-sdk";
+
+const management = new SttServerManagement({ baseUrl, token: adminToken });
+const { entries: speech, states } = await management.listRegistryEntries(); // stt-server's catalog + install state
+const ai = fromOllama(await (await fetch("http://127.0.0.1:11434/api/tags")).json());   // + shows: { [name]: /api/show body }
+const cloud = listCloudEntries();                                                         // known cloud models (Plus)
+const list = [...speech, ...ai, ...cloud];
+
+parseModelRef("llm/ollama/llama3.2");     // { kind: "llm", provider: "ollama", id: "llama3.2:latest" }
+```
+
+**An entry** (`ModelEntry`) is one model of the list. Its flags:
+
+| Field | Values |
+|---|---|
+| `locality` | `local` or `cloud` (anything that leaves this computer) |
+| `tasks` (several allowed) | `speech-to-text`, `text-to-text`, `vision`, `text-to-speech`, `text-embedding`, `speaker-embedding`, `voice-activity-detection`, `denoise`; always includes the task of its `kind` |
+| `kind` (primary, for the reference) | `speech`, `llm`, `speaker`, `vad`, `denoise`, `tts`, `embedding` |
+| `access` | `free` (local) or `plus` (every cloud model) |
+| `privacy` | what leaves the computer (`audio`, `text`, `context`, `images`) and `to` which host; empty for local |
+| `capabilities` | stt-server's tri-state matrix (`supported` / `unsupported` / `unknown`, with `evidence`) extended with `tools`, `thinking`, `vision`, `json_schema`, `system_role`, `context_window`, `text_streaming`, ... |
+
+**A reference** is `kind/provider/id`, the one string a workflow stores: `speech/stt-server/parakeet-tdt-0.6b-v2`,
+`speech/stt-server/custom-<slug>-<sha8>`, `llm/ollama/gemma3:4b`, `llm/openrouter/anthropic/claude-sonnet-4.5`. The id
+may contain `/` and `:`; only the first two `/` separate the parts. `sttServerModelRef(slug)` and `ollamaModelRef(tag)`
+map the old flat ids (an Ollama name without a tag is `:latest`).
+
+**Adapters** turn what a source says into entries: `fromSttServerManaged` (`GET /models/manage`),
+`fromSttServerV1Model` (`GET /v1/models`), `fromOllama` (`/api/tags`, each optionally with its `/api/show`) and
+`fromCloudCatalog`. `toBooleans(matrix)` is the one derivation of the simple `ModelCapabilities` booleans (`unknown` is
+not supported); `SttServerProvider` uses it too.
+
+**Data**: `BUILTIN_PROVIDERS` (`data/providers.json`: Ollama and the cloud providers with endpoint, auth, quirks,
+timeouts, where to get a key) and `KNOWN_CLOUD_MODELS` (`data/cloud-models.json`: a short list per provider, with
+context windows and capability claims of ours as of 2026-10-30, to be refreshed as providers change; a provider that takes any model id accepts others
+too). Providers: AI Ollama (local), OpenAI, Anthropic, Gemini, Groq, OpenRouter, and a template for custom
+OpenAI-compatible endpoints; speech OpenAI, Groq, Deepgram.
+
+**Schema**: `MODEL_ENTRY_SCHEMA` is the JSON Schema (draft 2020-12, `schema/model-entry.v1.json` in the source). Its
+`$defs` also cover `ModelState`, `ProviderDescriptor` and the two data files, so another language can validate all of
+it. Additive fields never change the version.
+
+`SttServerManagement` (main entry) is the client for stt-server's model manager and local admin API
+(`/models/manage/*`, `/v1/local/*`, `/health`, `/readiness`; admin token): list, download, verify, set default,
+remove, poll operations. It moved here from the Stanzo app as `ModelManagerClient`.
 
 ## Delivery decisions (2026-08-12)
 

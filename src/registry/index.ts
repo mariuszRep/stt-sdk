@@ -61,7 +61,6 @@ export type { CapabilityStatus, CapabilityEvidence, CapabilityControl, ControlCa
 
 export { STT_SERVER_PROVIDER, OLLAMA_PROVIDER, canonicalOllamaTag, formatModelRef, parseModelRef, sttServerModelRef, ollamaModelRef } from "./ref";
 
-export { getModelDisplaySizeBytes } from "./sources";
 export type { ManagedModel, SttServerV1Model, OllamaTag, OllamaTagsResponse, OllamaShowResponse } from "./sources";
 
 export { fromSttServerManaged, fromSttServerV1Model, sttServerManagedState, sttServerV1State } from "./adapters/stt-server";
@@ -70,3 +69,4 @@ export type { OllamaShows } from "./adapters/ollama";
 export { fromCloudCatalog } from "./adapters/cloud";
 
 export { MODEL_ENTRY_SCHEMA } from "./schema";
+export { BUILTIN_PROVIDERS, KNOWN_CLOUD_MODELS, listCloudEntries } from "./data";

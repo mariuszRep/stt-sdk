@@ -79,6 +79,12 @@ export {
   OpenAIProvider,
   GroqProvider,
   SttServerProvider,
+  SttServerManagement,
+  ModelManagerError,
+  CancelledError,
+  isModelBusyError,
+  managementToken,
+  MODEL_BUSY_WAIT_MS,
 } from "./providers";
 export type {
   LocalRuntimeOptions,
@@ -88,4 +94,18 @@ export type {
   OpenAIProviderOptions,
   GroqProviderOptions,
   SttServerProviderOptions,
+  SttServerManagementOptions,
+  TokenBearingConnection,
+  OperationState,
+  OperationStarted,
+  DefaultModelResponse,
+  SetDefaultResponse,
+  RemoveModelResponse,
+  ModelRecommendation,
+  SystemInfo,
+  LocalConfig,
+  HealthResponse,
+  ReadinessResponse,
 } from "./providers";
+export { getModelDisplaySizeBytes } from "./registry/sources";
+export type { ManagedModel } from "./registry/sources";

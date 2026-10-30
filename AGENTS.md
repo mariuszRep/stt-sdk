@@ -42,7 +42,7 @@ bump or the cross-repo train) — everything below is self-contained for this re
 
 | Owns | Must not own |
 |---|---|
-| Provider discovery, capabilities, models, batch/streaming transcription, transcript events, timestamps, structured errors — one `SttProvider` contract for local runtimes and cloud APIs | Hardware detection, provider/model install, process start/stop, runtime supervision (all `stt-server`); any dependency on `stt-server` |
+| Provider discovery, capabilities, models, batch/streaming transcription, transcript events, timestamps, structured errors — one `SttProvider` contract for local runtimes and cloud APIs; the model registry (`/registry`: one list of every model with local/cloud and task flags, JSON Schema, adapters, built-in provider and known cloud model data) and `SttServerManagement`, the client of stt-server's model-manager API (it calls the server; the server installs) | Hardware detection, provider/model install, process start/stop, runtime supervision (all `stt-server`); any dependency on `stt-server` |
 
 `stt-server` may consume this package as a published, versioned npm library — never SDK
 source by repository-relative path.

@@ -30,6 +30,9 @@ const FASTER_WHISPER_CAPABILITY: ProviderCapability = {
  * FasterWhisperProvider({ baseUrl })` call sites keep working unchanged.
  * Its wire behavior *is* `LocalRuntimeProvider`'s; nothing here is
  * faster-whisper-specific anymore.
+ *
+ * @deprecated Provider-era API, kept so existing call sites keep working and removed in 1.0. Use `SttServerProvider`
+ * against stt-server (or a cloud provider) instead.
  */
 export class FasterWhisperProvider extends LocalRuntimeProvider {
   constructor(options: FasterWhisperOptions) {

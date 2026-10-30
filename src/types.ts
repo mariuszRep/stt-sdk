@@ -140,6 +140,9 @@ export interface DescriptorAuth {
  * Versioned connection descriptor for a local runtime, issued by `stt-server`.
  * The SDK accepts these descriptors; it never discovers hardware or supervises
  * runtimes itself.
+ *
+ * @deprecated Provider-era API, kept so existing call sites keep working and removed in 1.0. Use `SttServerProvider`
+ * against stt-server (or a cloud provider) instead.
  */
 export interface RuntimeConnectionDescriptor {
   schemaVersion: 1;

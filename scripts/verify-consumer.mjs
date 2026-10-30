@@ -113,6 +113,7 @@ import {
   PROTOCOL_VERSION,
   RUNTIME_DESCRIPTOR_SCHEMA_VERSION,
   SttError,
+  SttServerManagement,
 } from "@open-vibe-ai/stt-sdk";
 import type {
   SttProvider,
@@ -126,7 +127,8 @@ import type {
 } from "@open-vibe-ai/stt-sdk";
 
 import { parseModelRef, formatModelRef, fromOllama, toBooleans, MODEL_ENTRY_SCHEMA } from "@open-vibe-ai/stt-sdk/registry";
-import type { ModelEntry, ModelRef, ModelTask } from "@open-vibe-ai/stt-sdk/registry";
+import { BUILTIN_PROVIDERS, listCloudEntries } from "@open-vibe-ai/stt-sdk/registry";
+import type { ModelEntry, ModelRef, ModelState, ModelTask } from "@open-vibe-ai/stt-sdk/registry";
 
 const local: SttProvider = new FasterWhisperProvider({ baseUrl: "http://127.0.0.1:8000" });
 const cloud: SttProvider = new DeepgramProvider({ apiKey: "test" });
@@ -177,6 +179,9 @@ const modelRef: ModelRef | null = parseModelRef("llm/ollama/llama3.2");
 const tasks: ModelTask[] = ["text-to-text", "vision"];
 const ollamaEntries: ModelEntry[] = fromOllama({ models: [{ name: "llama3.2" }] });
 console.log(modelRef && formatModelRef(modelRef), tasks, ollamaEntries[0]?.ref, toBooleans(undefined).streaming, MODEL_ENTRY_SCHEMA.$id);
+const management = new SttServerManagement({ baseUrl: "http://127.0.0.1:54321", token: "admin" });
+const listed: Promise<{ entries: ModelEntry[]; states: ModelState[] }> = management.listRegistryEntries();
+console.log(listed, BUILTIN_PROVIDERS.providers.length, listCloudEntries().length);
 
 async function main(): Promise<void> {
   const result: TranscriptionResult = await local.transcribe(request);
@@ -203,7 +208,7 @@ const fromDescriptor = sdk.createProvider({
 });
 console.log(provider.capability.id, dg.capability.id, fromDescriptor.id, sdk.PROTOCOL_VERSION);
 const registry = require("@open-vibe-ai/stt-sdk/registry");
-console.log(registry.formatModelRef(registry.parseModelRef("speech/stt-server/whisper-tiny")), registry.MODEL_KINDS.length, registry.MODEL_ENTRY_SCHEMA.$id);
+console.log(registry.formatModelRef(registry.parseModelRef("speech/stt-server/whisper-tiny")), registry.MODEL_KINDS.length, registry.MODEL_ENTRY_SCHEMA.$id, registry.listCloudEntries().length, typeof sdk.SttServerManagement);
 `,
   );
 
