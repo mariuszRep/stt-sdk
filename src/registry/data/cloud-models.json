@@ -2,39 +2,38 @@
   "schemaVersion": 1,
   "catalogVersion": "2026-10-30",
   "models": [
-    { "provider": "openai", "kind": "llm", "id": "gpt-5", "name": "GPT-5", "tasks": ["vision"], "contextWindow": 400000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openai", "kind": "llm", "id": "gpt-5-mini", "name": "GPT-5 mini", "tasks": ["vision"], "contextWindow": 400000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openai", "kind": "llm", "id": "gpt-5-nano", "name": "GPT-5 nano", "tasks": ["vision"], "contextWindow": 400000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openai", "kind": "llm", "id": "gpt-4.1", "name": "GPT-4.1", "tasks": ["vision"], "contextWindow": 1047576, "claims": { "tools": true, "thinking": false, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openai", "kind": "llm", "id": "gpt-4.1-mini", "name": "GPT-4.1 mini", "tasks": ["vision"], "contextWindow": 1047576, "claims": { "tools": true, "thinking": false, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openai", "kind": "llm", "id": "gpt-4o-mini", "name": "GPT-4o mini", "tasks": ["vision"], "contextWindow": 128000, "claims": { "tools": true, "thinking": false, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openai", "kind": "llm", "id": "gpt-6-astra", "name": "GPT-6 Astra", "tasks": ["vision"], "contextWindow": 1050000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openai", "kind": "llm", "id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "tasks": ["vision"], "contextWindow": 1050000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openai", "kind": "llm", "id": "gpt-6.1-terra", "name": "GPT-6.1 Terra", "tasks": ["vision"], "contextWindow": 1050000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openai", "kind": "llm", "id": "gpt-6-luna", "name": "GPT-6 Luna", "tasks": ["vision"], "contextWindow": 1050000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
 
-    { "provider": "anthropic", "kind": "llm", "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "tasks": ["vision"], "contextWindow": 200000, "claims": { "tools": true, "thinking": true, "jsonSchema": false, "systemRole": true, "textStreaming": true } },
-    { "provider": "anthropic", "kind": "llm", "id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "tasks": ["vision"], "contextWindow": 200000, "claims": { "tools": true, "thinking": true, "jsonSchema": false, "systemRole": true, "textStreaming": true } },
-    { "provider": "anthropic", "kind": "llm", "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "tasks": ["vision"], "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "anthropic", "kind": "llm", "id": "claude-fable-5-1", "name": "Claude Fable 5.1", "tasks": ["vision"], "contextWindow": 1000000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "anthropic", "kind": "llm", "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "tasks": ["vision"], "contextWindow": 1000000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "anthropic", "kind": "llm", "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "tasks": ["vision"], "contextWindow": 1000000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "anthropic", "kind": "llm", "id": "claude-haiku-5-5", "name": "Claude Haiku 5.5", "tasks": ["vision"], "contextWindow": 1000000, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
 
-    { "provider": "gemini", "kind": "llm", "id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "gemini", "kind": "llm", "id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "gemini", "kind": "llm", "id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "gemini", "kind": "llm", "id": "gemini-4-argon", "name": "Gemini 4 Argon", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "gemini", "kind": "llm", "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "gemini", "kind": "llm", "id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
 
-    { "provider": "groq", "kind": "llm", "id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "contextWindow": 131072, "claims": { "tools": true, "thinking": false, "systemRole": true, "textStreaming": true } },
-    { "provider": "groq", "kind": "llm", "id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B Instant", "contextWindow": 131072, "claims": { "tools": true, "thinking": false, "systemRole": true, "textStreaming": true } },
-    { "provider": "groq", "kind": "llm", "id": "openai/gpt-oss-20b", "name": "GPT-OSS 20B", "contextWindow": 131072, "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "groq", "kind": "llm", "id": "openai/gpt-oss-120b", "name": "GPT-OSS 120B", "contextWindow": 131072, "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "groq", "kind": "llm", "id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "contextWindow": 131072, "claims": { "tools": true, "thinking": false, "jsonSchema": false, "systemRole": true, "textStreaming": true } },
+    { "provider": "groq", "kind": "llm", "id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B Instant", "contextWindow": 131072, "claims": { "tools": true, "thinking": false, "jsonSchema": false, "systemRole": true, "textStreaming": true } },
+    { "provider": "groq", "kind": "llm", "id": "openai/gpt-oss-20b", "name": "GPT-OSS 20B", "contextWindow": 131072, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "groq", "kind": "llm", "id": "openai/gpt-oss-120b", "name": "GPT-OSS 120B", "contextWindow": 131072, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
 
-    { "provider": "openrouter", "kind": "llm", "id": "openai/gpt-4o-mini", "name": "GPT-4o mini", "tasks": ["vision"], "contextWindow": 128000, "claims": { "tools": true, "thinking": false, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openrouter", "kind": "llm", "id": "anthropic/claude-sonnet-4.5", "name": "Claude Sonnet 4.5", "tasks": ["vision"], "contextWindow": 200000, "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openrouter", "kind": "llm", "id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash", "tasks": ["vision"], "contextWindow": 1048576, "claims": { "tools": true, "thinking": true, "jsonSchema": true, "systemRole": true, "textStreaming": true } },
-    { "provider": "openrouter", "kind": "llm", "id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B Instruct", "contextWindow": 131072, "claims": { "tools": true, "thinking": false, "systemRole": true, "textStreaming": true } },
+    { "provider": "openrouter", "kind": "llm", "id": "openai/gpt-6.1-terra", "name": "GPT-6.1 Terra", "tasks": ["vision"], "contextWindow": 1050000, "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openrouter", "kind": "llm", "id": "anthropic/claude-sonnet-5.5", "name": "Claude Sonnet 5.5", "tasks": ["vision"], "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openrouter", "kind": "llm", "id": "anthropic/claude-haiku-5.5", "name": "Claude Haiku 5.5", "tasks": ["vision"], "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openrouter", "kind": "llm", "id": "google/gemini-3.8-flash", "name": "Gemini 3.8 Flash", "tasks": ["vision"], "claims": { "tools": true, "thinking": true, "systemRole": true, "textStreaming": true } },
+    { "provider": "openrouter", "kind": "llm", "id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B Instruct", "claims": { "tools": true, "thinking": false, "systemRole": true, "textStreaming": true } },
 
-    { "provider": "openai", "kind": "speech", "id": "gpt-4o-transcribe", "name": "GPT-4o Transcribe", "claims": { "languageHint": true, "prompt": true, "temperature": true, "timestamps": false, "translation": false } },
-    { "provider": "openai", "kind": "speech", "id": "gpt-4o-mini-transcribe", "name": "GPT-4o mini Transcribe", "claims": { "languageHint": true, "prompt": true, "temperature": true, "timestamps": false, "translation": false } },
-    { "provider": "openai", "kind": "speech", "id": "whisper-1", "name": "Whisper", "claims": { "languageHint": true, "prompt": true, "temperature": true, "timestamps": true, "translation": true } },
+    { "provider": "openai", "kind": "speech", "id": "gpt-transcribe", "name": "GPT-Transcribe", "claims": { "languageHint": true, "prompt": true, "timestamps": false, "translation": false, "streaming": true } },
+    { "provider": "openai", "kind": "speech", "id": "whisper-1", "name": "Whisper", "description": "Deprecated by OpenAI; shuts down 2027-02-26. The only OpenAI model with word and segment timestamps and translation.", "claims": { "languageHint": true, "prompt": true, "timestamps": true, "translation": true, "streaming": false } },
 
     { "provider": "groq", "kind": "speech", "id": "whisper-large-v3-turbo", "name": "Whisper Large v3 Turbo", "claims": { "languageHint": true, "prompt": true, "temperature": true, "timestamps": true, "translation": false } },
     { "provider": "groq", "kind": "speech", "id": "whisper-large-v3", "name": "Whisper Large v3", "claims": { "languageHint": true, "prompt": true, "temperature": true, "timestamps": true, "translation": true } },
 
-    { "provider": "deepgram", "kind": "speech", "id": "nova-3", "name": "Nova-3", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false } },
-    { "provider": "deepgram", "kind": "speech", "id": "nova-2", "name": "Nova-2", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false } }
+    { "provider": "deepgram", "kind": "speech", "id": "nova-3", "name": "Nova-3", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false, "streaming": true } },
+    { "provider": "deepgram", "kind": "speech", "id": "nova-2", "name": "Nova-2", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false, "streaming": true } }
   ]
 }

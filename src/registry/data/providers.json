@@ -58,7 +58,7 @@
       "name": "Anthropic",
       "locality": "cloud",
       "access": "plus",
-      "auth": { "type": "x-api-key", "keyUrl": "https://console.anthropic.com/settings/keys" },
+      "auth": { "type": "x-api-key", "keyUrl": "https://platform.claude.com/settings/keys" },
       "serves": [
         {
           "kind": "llm",
@@ -69,7 +69,7 @@
           "modelIdFreeText": true,
           "privacy": { "sends": ["text", "context"], "to": "api.anthropic.com" },
           "quirks": {
-            "reasoningOff": "native_budget_0",
+            "reasoningOff": "none",
             "systemRole": "system",
             "structuredOutput": "none",
             "extraHeaders": { "anthropic-version": "2023-06-01" }
@@ -94,7 +94,7 @@
           "modelsEndpoint": "/models",
           "modelIdFreeText": true,
           "privacy": { "sends": ["text", "context"], "to": "generativelanguage.googleapis.com" },
-          "quirks": { "reasoningOff": "reasoning_effort_none", "systemRole": "system", "structuredOutput": "json_schema", "stripModelsPrefix": true },
+          "quirks": { "reasoningOff": "none", "systemRole": "system", "structuredOutput": "json_schema", "stripModelsPrefix": true },
           "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
           "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
         }
@@ -115,7 +115,7 @@
           "modelsEndpoint": "/models",
           "modelIdFreeText": true,
           "privacy": { "sends": ["text", "context"], "to": "api.groq.com" },
-          "quirks": { "reasoningOff": "reasoning_effort_none", "systemRole": "system", "structuredOutput": "json_object" },
+          "quirks": { "reasoningOff": "none", "systemRole": "system", "structuredOutput": "json_object" },
           "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
           "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
         },
@@ -148,7 +148,7 @@
           "modelIdFreeText": true,
           "privacy": { "sends": ["text", "context"], "to": "openrouter.ai" },
           "quirks": {
-            "reasoningOff": "reasoning_exclude",
+            "reasoningOff": "reasoning_effort_none",
             "systemRole": "system",
             "structuredOutput": "json_schema",
             "extraHeaders": { "X-Title": "Stanzo" }

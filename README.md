@@ -221,7 +221,7 @@ parseModelRef("llm/ollama/llama3.2");     // { kind: "llm", provider: "ollama", 
 | `capabilities` | stt-server's tri-state matrix (`supported` / `unsupported` / `unknown`, with `evidence`) extended with `tools`, `thinking`, `vision`, `json_schema`, `system_role`, `context_window`, `text_streaming`, ... |
 
 **A reference** is `kind/provider/id`, the one string a workflow stores: `speech/stt-server/parakeet-tdt-0.6b-v2`,
-`speech/stt-server/custom-<slug>-<sha8>`, `llm/ollama/gemma3:4b`, `llm/openrouter/anthropic/claude-sonnet-4.5`. The id
+`speech/stt-server/custom-<slug>-<sha8>`, `llm/ollama/gemma3:4b`, `llm/openrouter/anthropic/claude-sonnet-5.5`. The id
 may contain `/` and `:`; only the first two `/` separate the parts. `sttServerModelRef(slug)` and `ollamaModelRef(tag)`
 map the old flat ids (an Ollama name without a tag is `:latest`).
 

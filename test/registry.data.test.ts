@@ -109,15 +109,15 @@ describe("listCloudEntries", () => {
   it("says what leaves the computer: audio for speech, text and context for AI, pictures for a vision model", () => {
     const find = (ref: string) => entries.find((e) => e.ref === ref)!;
     expect(find("speech/deepgram/nova-3").privacy).toEqual({ sends: ["audio"], to: "api.deepgram.com" });
-    expect(find("llm/anthropic/claude-haiku-4-5").privacy).toEqual({ sends: ["text", "context", "images"], to: "api.anthropic.com" });
+    expect(find("llm/anthropic/claude-haiku-5-5").privacy).toEqual({ sends: ["text", "context", "images"], to: "api.anthropic.com" });
     expect(find("llm/groq/llama-3.3-70b-versatile").privacy).toEqual({ sends: ["text", "context"], to: "api.groq.com" });
     expect(find("llm/groq/llama-3.3-70b-versatile").tasks).toEqual(["text-to-text"]);
-    expect(find("llm/openai/gpt-5-mini").tasks).toEqual(["text-to-text", "vision"]);
-    expect(find("llm/gemini/gemini-2.5-flash").capabilities.context_window?.extra).toEqual({ tokens: 1048576 });
+    expect(find("llm/openai/gpt-6.1-terra").tasks).toEqual(["text-to-text", "vision"]);
+    expect(find("llm/gemini/gemini-3.8-flash").capabilities.context_window?.extra).toEqual({ tokens: 1048576 });
   });
 
   it("keeps a model id with a slash whole in its reference", () => {
-    expect(entries.map((e) => e.ref)).toContain("llm/openrouter/anthropic/claude-sonnet-4.5");
+    expect(entries.map((e) => e.ref)).toContain("llm/openrouter/anthropic/claude-sonnet-5.5");
     expect(entries.map((e) => e.ref)).toContain("llm/groq/openai/gpt-oss-20b");
   });
 });
