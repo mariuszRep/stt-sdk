@@ -64,7 +64,14 @@ function entryOf(record: CloudModelRecord, provider: ProviderDescriptor): ModelE
     privacy: compact({ sends, to: service.privacy.to }),
     capabilities: capabilitiesOf(record, tasks),
     languages: record.languages,
-    cloud: compact({ modelIdFreeText: service.modelIdFreeText, pricingNote: record.pricingNote }),
+    cloud: compact({
+      modelIdFreeText: service.modelIdFreeText,
+      pricingNote: record.pricingNote,
+      voices: record.voices,
+      defaultVoice: record.defaultVoice,
+      audioFormat: record.audioFormat,
+      pcmRate: record.pcmRate,
+    }),
   });
 }
 

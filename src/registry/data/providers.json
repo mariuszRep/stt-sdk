@@ -155,6 +155,17 @@
           },
           "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000, "longRunMs": 180000 },
           "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
+        },
+        {
+          "kind": "tts",
+          "api": "openai-audio",
+          "baseUrl": "https://openrouter.ai/api/v1",
+          "baseUrlEditable": false,
+          "modelsEndpoint": "/models?output_modalities=speech",
+          "modelIdFreeText": true,
+          "privacy": { "sends": ["text"], "to": "openrouter.ai" },
+          "timeouts": { "connectMs": 10000, "firstByteMs": 20000, "stallMs": 30000, "totalMs": 60000 },
+          "retry": { "statuses": [429, 502, 503, 504], "max": 1, "backoffMs": 1000 }
         }
       ]
     },

@@ -97,7 +97,11 @@
       "type": "object",
       "properties": {
         "modelIdFreeText": { "type": "boolean" },
-        "pricingNote": { "type": "string" }
+        "pricingNote": { "type": "string" },
+        "voices": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true, "description": "A speech-out model's voices, as the provider names them." },
+        "defaultVoice": { "type": "string", "minLength": 1, "description": "The one of voices to start with." },
+        "audioFormat": { "enum": ["mp3", "pcm"] },
+        "pcmRate": { "type": "integer", "minimum": 1, "description": "Samples per second of pcm audio." }
       }
     },
     "editorial": {
@@ -245,7 +249,11 @@
             "streaming": { "type": "boolean" }
           }
         },
-        "pricingNote": { "type": "string" }
+        "pricingNote": { "type": "string" },
+        "voices": { "$ref": "#/$defs/cloudInfo/properties/voices" },
+        "defaultVoice": { "$ref": "#/$defs/cloudInfo/properties/defaultVoice" },
+        "audioFormat": { "$ref": "#/$defs/cloudInfo/properties/audioFormat" },
+        "pcmRate": { "$ref": "#/$defs/cloudInfo/properties/pcmRate" }
       }
     },
     "cloudModelCatalog": {

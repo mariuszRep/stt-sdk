@@ -12,7 +12,7 @@ export const MODEL_ENTRY_SCHEMA_VERSION = 1;
 /**
  * The primary kind of a model: the one part of its reference (`kind/provider/id`). A model that does several things
  * has several `tasks` but one kind (a vision-capable chat model is `llm`; its `tasks` say it also reads pictures).
- * `tts` and `embedding` are reserved: nothing in the estate serves them yet.
+ * `tts` is speech out (cloud only so far: OpenRouter's text-to-speech models); `embedding` is reserved: nothing serves it yet.
  */
 export const MODEL_KINDS = ["speech", "llm", "speaker", "vad", "denoise", "tts", "embedding"] as const;
 export type ModelKind = (typeof MODEL_KINDS)[number];
@@ -104,11 +104,23 @@ export interface LocalModelInfo {
   custom?: boolean;
 }
 
+/** The audio a speech-out model answers with: a file (`mp3`) or raw samples (`pcm`, see `pcmRate`). */
+export const AUDIO_FORMATS = ["mp3", "pcm"] as const;
+export type AudioFormat = (typeof AUDIO_FORMATS)[number];
+
 /** Cloud-only extras; the endpoint and the auth come from the provider. */
 export interface CloudModelInfo {
   /** The provider takes any model id typed in, so this list is a convenience. */
   modelIdFreeText?: boolean;
   pricingNote?: string;
+  /** A speech-out (`tts`) model's voices, as the provider names them (the `voice` it is sent). */
+  voices?: string[];
+  /** The one of `voices` to start with. */
+  defaultVoice?: string;
+  /** What a speech-out model sends back. */
+  audioFormat?: AudioFormat;
+  /** The samples per second of `pcm` audio; absent for `mp3`. */
+  pcmRate?: number;
 }
 
 /** What we say about a model beyond what it is: curated by us or by the catalog's source. */
@@ -279,8 +291,8 @@ export interface ProviderDescriptor {
 
 // ── Known cloud models (data) ────────────────────────────────────────────
 
-/** One known model of a cloud provider, as `cloud-models.json` lists it. Everything but the id is a claim of ours. */
-export interface CloudModelRecord {
+/** One known model of a cloud provider, as `cloud-models.json` lists it. Everything but the id is a claim of ours. A speech-out model also lists its voices and audio, which go to the entry's `cloud`. */
+export interface CloudModelRecord extends Pick<CloudModelInfo, "voices" | "defaultVoice" | "audioFormat" | "pcmRate"> {
   provider: string;
   kind: ModelKind;
   id: string;

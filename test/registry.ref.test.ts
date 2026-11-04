@@ -22,6 +22,12 @@ describe("model references", () => {
     expect(parseModelRef("llm/groq/openai/gpt-oss-20b")?.id).toBe("openai/gpt-oss-20b");
   });
 
+  it("reads a speech-out reference whole, with a slash in the id and a :free route that names no voice", () => {
+    expect(parseModelRef("tts/openrouter/hexgrad/kokoro-82m")).toEqual({ kind: "tts", provider: "openrouter", id: "hexgrad/kokoro-82m" });
+    expect(parseModelRef("tts/openrouter/heygen/heygen-voice-1-turbo:free")).toEqual({ kind: "tts", provider: "openrouter", id: "heygen/heygen-voice-1-turbo:free" });
+    expect(formatModelRef({ kind: "tts", provider: "openrouter", id: "fish-audio/s2.1-pro-free:free" })).toBe("tts/openrouter/fish-audio/s2.1-pro-free:free");
+  });
+
   it("accepts a custom endpoint provider id with a colon", () => {
     expect(parseModelRef("llm/custom:3/my-model:7b")).toEqual({ kind: "llm", provider: "custom:3", id: "my-model:7b" });
   });

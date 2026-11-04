@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUDIO_FORMATS,
   MODEL_ACCESS,
   MODEL_ENTRY_SCHEMA,
   MODEL_KINDS,
@@ -15,7 +16,7 @@ import {
 } from "../src/registry";
 import manage from "./fixtures/registry/stt-server-manage.json";
 import registry from "./fixtures/registry/stt-server-registry.json";
-import { entryProblems, registryDocumentProblems, stateProblems } from "./registry-schema";
+import { cloudCatalogProblems, entryProblems, registryDocumentProblems, stateProblems } from "./registry-schema";
 
 const defs = MODEL_ENTRY_SCHEMA.$defs as Record<string, { enum?: unknown[]; properties?: Record<string, { enum?: unknown[] }> }>;
 
@@ -29,6 +30,7 @@ describe("model-entry.v1.json", () => {
     const top = MODEL_ENTRY_SCHEMA.properties as Record<string, { enum?: unknown[] }>;
     expect(top.locality?.enum).toEqual([...MODEL_LOCALITIES]);
     expect(top.access?.enum).toEqual([...MODEL_ACCESS]);
+    expect(defs.cloudInfo?.properties?.audioFormat?.enum).toEqual([...AUDIO_FORMATS]);
     expect(defs.providerAuth?.properties?.type?.enum).toEqual([...PROVIDER_AUTH_TYPES]);
     expect(defs.providerService?.properties?.api?.enum).toEqual([...PROVIDER_APIS]);
     expect(defs.providerQuirks?.properties?.reasoningOff?.enum).toEqual([...REASONING_OFF_QUIRKS]);
@@ -66,6 +68,18 @@ describe("model-entry.v1.json", () => {
     expect(entryProblems({ ...valid(), capabilities: { streaming: { status: "maybe" } } })).not.toEqual([]);
     expect(entryProblems({ ...valid(), capabilities: { streaming: {} } })).not.toEqual([]);
     expect(entryProblems({ ...valid(), local: { files: [{ filename: "a.gguf", quant: "Q8_0", sha256: "nothex" }] } })).not.toEqual([]);
+  });
+
+  it("describes a speech-out model's voices and audio, on the entry and on the known-model record", () => {
+    const cloud = { voices: ["af_heart", "am_adam"], defaultVoice: "af_heart", audioFormat: "pcm", pcmRate: 24000 };
+    expect(entryProblems({ ...valid(), cloud })).toEqual([]);
+    const record = { provider: "openrouter", kind: "tts", id: "hexgrad/kokoro-82m", name: "Kokoro 82M", ...cloud };
+    const catalog = { schemaVersion: 1, catalogVersion: "2026-11-04", models: [record] };
+    expect(cloudCatalogProblems(catalog)).toEqual([]);
+    for (const bad of [{ audioFormat: "wav" }, { pcmRate: 0 }, { voices: ["a", "a"] }, { voices: [""] }, { defaultVoice: "" }]) {
+      expect(entryProblems({ ...valid(), cloud: { ...cloud, ...bad } }), JSON.stringify(bad)).not.toEqual([]);
+      expect(cloudCatalogProblems({ ...catalog, models: [{ ...record, ...bad }] }), JSON.stringify(bad)).not.toEqual([]);
+    }
   });
 
   it("accepts fields a later version adds (additive changes never break an older reader)", () => {

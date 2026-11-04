@@ -35,6 +35,12 @@
     { "provider": "groq", "kind": "speech", "id": "whisper-large-v3", "name": "Whisper Large v3", "claims": { "languageHint": true, "prompt": true, "temperature": true, "timestamps": true, "translation": true } },
 
     { "provider": "deepgram", "kind": "speech", "id": "nova-3", "name": "Nova-3", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false, "streaming": true } },
-    { "provider": "deepgram", "kind": "speech", "id": "nova-2", "name": "Nova-2", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false, "streaming": true } }
+    { "provider": "deepgram", "kind": "speech", "id": "nova-2", "name": "Nova-2", "claims": { "languageHint": true, "prompt": false, "temperature": false, "timestamps": true, "translation": false, "streaming": true } },
+
+    { "provider": "openrouter", "kind": "tts", "id": "microsoft/mai-voice-2.1-flash", "name": "MAI-Voice 2.1 Flash", "audioFormat": "mp3", "voices": ["en-US-Harper:MAI-Voice-2.1-Flash", "en-US-Ethan:MAI-Voice-2.1-Flash", "en-US-Olivia:MAI-Voice-2.1-Flash", "en-GB-Emily:MAI-Voice-2.1-Flash", "en-GB-Harry:MAI-Voice-2.1-Flash"], "defaultVoice": "en-US-Harper:MAI-Voice-2.1-Flash", "pricingNote": "$15 per million characters" },
+    { "provider": "openrouter", "kind": "tts", "id": "google/gemini-3.8-flash-lite-tts", "name": "Gemini 3.8 Flash Lite TTS", "audioFormat": "pcm", "pcmRate": 24000, "voices": ["Kore", "Puck", "Charon", "Zephyr", "Aoede"], "defaultVoice": "Kore", "pricingNote": "$0.5 per million prompt tokens plus $6 per million audio tokens" },
+    { "provider": "openrouter", "kind": "tts", "id": "mistralai/voxtral-mini-tts-3-0", "name": "Voxtral Mini TTS 3", "audioFormat": "mp3", "voices": ["en_paul_neutral", "en_paul_cheerful", "gb_oliver_neutral", "gb_jane_neutral"], "defaultVoice": "en_paul_neutral", "pricingNote": "$13 per million characters" },
+    { "provider": "openrouter", "kind": "tts", "id": "elevenlabs/eleven-flash-v2.5", "name": "Eleven Flash v2.5", "audioFormat": "mp3", "voices": ["sarah", "alice", "george", "brian", "jessica"], "defaultVoice": "sarah", "pricingNote": "$40 per million characters" },
+    { "provider": "openrouter", "kind": "tts", "id": "hexgrad/kokoro-82m", "name": "Kokoro 82M", "audioFormat": "mp3", "voices": ["af_heart", "af_bella", "af_nicole", "am_adam", "bf_emma", "bm_george"], "defaultVoice": "af_heart", "pricingNote": "$0.62 per million characters" }
   ]
 }

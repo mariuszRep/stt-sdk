@@ -60,6 +60,12 @@ describe("providers.json", () => {
     expect(byId.get("gemini")?.serves[0]?.quirks?.stripModelsPrefix).toBe(true);
   });
 
+  it("has OpenRouter serve speech out over the audio API, sending text to openrouter.ai", () => {
+    const tts = byId.get("openrouter")?.serves.find((s) => s.kind === "tts");
+    expect(tts).toMatchObject({ api: "openai-audio", baseUrl: "https://openrouter.ai/api/v1", baseUrlEditable: false, privacy: { sends: ["text"], to: "openrouter.ai" } });
+    expect(providers.filter((p) => p.serves.some((s) => s.kind === "tts")).map((p) => p.id)).toEqual(["openrouter"]);
+  });
+
   it("holds no secret", () => {
     expect(JSON.stringify(providersJson)).not.toMatch(/sk-[A-Za-z0-9]|AIza|Bearer \S|api[_-]?key["']?\s*:\s*["'][^"']/i);
   });
@@ -93,6 +99,40 @@ describe("cloud-models.json", () => {
   });
 });
 
+describe("speech-out models", () => {
+  const speechOut = KNOWN_CLOUD_MODELS.models.filter((m) => m.kind === "tts");
+
+  it("lists the five OpenRouter models, each with a default voice that is one of its voices", () => {
+    expect(speechOut.map((m) => `${m.id} ${m.defaultVoice}`)).toEqual([
+      "microsoft/mai-voice-2.1-flash en-US-Harper:MAI-Voice-2.1-Flash",
+      "google/gemini-3.8-flash-lite-tts Kore",
+      "mistralai/voxtral-mini-tts-3-0 en_paul_neutral",
+      "elevenlabs/eleven-flash-v2.5 sarah",
+      "hexgrad/kokoro-82m af_heart",
+    ]);
+    for (const m of speechOut) {
+      expect(m.provider, m.id).toBe("openrouter");
+      expect(m.voices, m.id).toContain(m.defaultVoice);
+      expect(new Set(m.voices).size, m.id).toBe(m.voices?.length);
+      expect(m.pricingNote, m.id).toBeDefined();
+    }
+  });
+
+  it("says what audio each answers with: Gemini raw pcm with its rate, the rest mp3", () => {
+    for (const m of speechOut) {
+      expect(m.audioFormat, m.id).toBe(m.id.startsWith("google/") ? "pcm" : "mp3");
+      expect(m.pcmRate !== undefined, m.id).toBe(m.audioFormat === "pcm");
+    }
+  });
+
+  it("keeps the speech-out fields off every other model", () => {
+    for (const m of KNOWN_CLOUD_MODELS.models.filter((model) => model.kind !== "tts")) {
+      expect(m, m.id).not.toHaveProperty("voices");
+      expect(m, m.id).not.toHaveProperty("audioFormat");
+    }
+  });
+});
+
 describe("listCloudEntries", () => {
   const entries = listCloudEntries();
 
@@ -114,6 +154,21 @@ describe("listCloudEntries", () => {
     expect(find("llm/groq/llama-3.3-70b-versatile").tasks).toEqual(["text-to-text"]);
     expect(find("llm/openai/gpt-6.1-terra").tasks).toEqual(["text-to-text", "vision"]);
     expect(find("llm/gemini/gemini-3.8-flash").capabilities.context_window?.extra).toEqual({ tokens: 1048576 });
+  });
+
+  it("makes a speech-out entry of the tts kind, sending text, with its voices under cloud", () => {
+    const kokoro = entries.find((e) => e.ref === "tts/openrouter/hexgrad/kokoro-82m")!;
+    expect(kokoro).toMatchObject({ kind: "tts", tasks: ["text-to-speech"], privacy: { sends: ["text"], to: "openrouter.ai" }, capabilities: {} });
+    expect(kokoro.cloud).toMatchObject({ modelIdFreeText: true, defaultVoice: "af_heart", audioFormat: "mp3", voices: expect.arrayContaining(["af_heart"]) });
+    expect(kokoro.cloud).not.toHaveProperty("pcmRate");
+    expect(entries.find((e) => e.id === "google/gemini-3.8-flash-lite-tts")?.cloud).toMatchObject({ audioFormat: "pcm", pcmRate: 24000 });
+  });
+
+  it("leaves speech-out models out of the AI and speech-to-text lists of a caller that filters by kind", () => {
+    const refs = (kind: string) => entries.filter((e) => e.kind === kind).map((e) => e.ref);
+    for (const kind of ["llm", "speech"]) for (const ref of refs(kind)) expect(ref, kind).not.toMatch(/^tts\//);
+    expect(refs("tts")).toHaveLength(5);
+    expect(entries.filter((e) => e.kind === "llm" || e.kind === "speech")).toHaveLength(entries.length - 5);
   });
 
   it("keeps a model id with a slash whole in its reference", () => {
