@@ -28,6 +28,7 @@ export type CapabilityEvidence = (typeof CAPABILITY_EVIDENCE)[number];
 /** The controls stt-server reports for a speech model (`word_timestamps` is read by the SDK when a server sends it). */
 export const SPEECH_CONTROLS = [
   "prompt",
+  "word_boost",
   "temperature",
   "language_hint",
   "language_detect",
@@ -127,6 +128,7 @@ export function toBooleans(raw: CapabilityMatrix | undefined): ModelCapabilities
   const translationTargets = translates ? raw?.translation?.target_languages : undefined;
   return {
     prompt: supported(raw?.prompt),
+    ...(supported(raw?.word_boost) ? { wordBoost: true } : {}),
     // Like translation, a model that is not loaded yet reports the languages it claims (`unknown` status): that is
     // enough to send the hint, which the server refuses for a model that cannot take it.
     languageHint: supported(raw?.language_hint) || claimsLanguages(raw?.language_hint as LanguageHintCapability | undefined),

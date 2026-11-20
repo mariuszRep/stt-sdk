@@ -178,6 +178,8 @@ export interface ModelInfo {
  */
 export interface ModelCapabilities {
   prompt?: boolean;
+  /** Whether the model's decoder can be told words to expect (stt-server's `boost` field; the Parakeet family). Present only when it can. */
+  wordBoost?: boolean;
   languageHint?: boolean;
   /** Whether this model can auto-detect the spoken language. */
   languageDetect?: boolean;
@@ -204,6 +206,13 @@ export interface BatchTranscriptionRequest {
   filename?: string;
   /** Context prompt (initial_prompt) — local runtime only. */
   prompt?: string;
+  /**
+   * Words the speech is expected to hold, written the way they should appear; the decoder leans towards them. Sent
+   * only to a model whose `capabilities.wordBoost` is true (stt-server, the Parakeet family); otherwise left out.
+   */
+  boostWords?: string[];
+  /** How hard the decoder leans towards `boostWords`; left out, the server's own default applies. */
+  boostWeight?: number;
   /** Language hint, where the provider supports it. */
   language?: string;
   /** Provider model identifier, where the provider supports it. */

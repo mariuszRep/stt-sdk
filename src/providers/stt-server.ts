@@ -401,6 +401,11 @@ export class SttServerProvider implements SttProvider {
       // vocabulary words); the SDK never rewrites or trims it.
       form.append("prompt", request.prompt);
     }
+    if (request.boostWords?.length && caps?.wordBoost) {
+      // One field per word, as written. The app picks the words; the SDK never rewrites them.
+      for (const word of request.boostWords) form.append("boost", word);
+      if (request.boostWeight !== undefined) form.append("boost_weight", String(request.boostWeight));
+    }
     if (request.language?.trim() && caps?.languageHint) {
       form.append("language", request.language.trim());
     }

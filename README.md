@@ -128,7 +128,7 @@ not report a list translates into English only. `translate()` and `createStream(
 `SttServerProvider` connects with an address and a token like a cloud provider —
 no discovery, install, model management, or server lifecycle. It checks `GET /health`
 on first use and refuses clearly if the server isn't `stt-server` or its
-`api_level` is too old. Before sending `prompt`/`language`/`temperature`/timestamp
+`api_level` is too old. Before sending `prompt`/`boostWords`/`language`/`temperature`/timestamp
 fields, it checks the chosen model's capabilities (from `GET /v1/models`, cached and
 refreshed on a stale-capability error) and omits anything the model doesn't support —
 an `"unknown"` capability status is treated the same as unsupported. Server errors are
@@ -138,6 +138,11 @@ mapped to a stable `code`/`retryable` hierarchy (`ServerNotReadyError`,
 `AdminRequiredError`, `UnauthorizedError`, `NetworkNotPrivateError`,
 `ServerVersionError`); an unrecognized server error code still surfaces with its
 original `code` rather than being swallowed.
+
+`boostWords` are words the speech is expected to hold, written the way they should appear (a user's
+vocabulary); `boostWeight` is how hard the decoder leans towards them (left out: the server's default).
+They go out as one `boost` field per word plus `boost_weight`, only to a model whose
+`capabilities.wordBoost` is true (stt-server's `word_boost` control: the Parakeet family's transducer models).
 
 Live transcription: a model whose `ModelInfo.capabilities.streaming` is `true` can be
 streamed with `provider.createStream({ model, language, encoding: "pcm_s16le", sampleRate: 16000, channels: 1 })`,

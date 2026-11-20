@@ -287,6 +287,58 @@ describe("SttServerProvider — listModels mapping", () => {
   });
 });
 
+describe("SttServerProvider — word boost", () => {
+  const BOOST_MODELS = {
+    object: "list",
+    data: [
+      { id: "parakeet", object: "model", owned_by: "local", default: true, capabilities: { word_boost: { status: "supported" } } },
+      { id: "not-loaded", object: "model", owned_by: "local", default: false, capabilities: { word_boost: { status: "unknown" } } },
+    ],
+  };
+
+  async function formFor(request: { model: string; boostWords?: string[]; boostWeight?: number }): Promise<FormData> {
+    const captures: Capture[] = [];
+    const provider = makeProvider(
+      {
+        "/health": () => jsonResponse(HEALTH_OK),
+        "/v1/models": () => jsonResponse(BOOST_MODELS),
+        "/v1/audio/transcriptions": () => jsonResponse({ text: "hello" }),
+      },
+      captures,
+    );
+    await provider.transcribe({ file: new Uint8Array([1, 2, 3]), ...request });
+    return captures.find((c) => c.url.endsWith("/v1/audio/transcriptions"))!.init!.body as FormData;
+  }
+
+  it("lists the capability only for a model that confirms it", async () => {
+    const provider = makeProvider({ "/health": () => jsonResponse(HEALTH_OK), "/v1/models": () => jsonResponse(BOOST_MODELS) });
+    const models = await provider.listModels();
+    expect(models.find((m) => m.id === "parakeet")!.capabilities?.wordBoost).toBe(true);
+    expect(models.find((m) => m.id === "not-loaded")!.capabilities?.wordBoost).toBeUndefined();
+  });
+
+  it("sends one boost field per word, as written, and the weight when given", async () => {
+    const form = await formFor({ model: "parakeet", boostWords: ["Stanzo", "New Relic"], boostWeight: 2.5 });
+    expect(form.getAll("boost")).toEqual(["Stanzo", "New Relic"]);
+    expect(form.get("boost_weight")).toBe("2.5");
+  });
+
+  it("leaves the weight to the server when none is given", async () => {
+    const form = await formFor({ model: "parakeet", boostWords: ["Stanzo"] });
+    expect(form.getAll("boost")).toEqual(["Stanzo"]);
+    expect(form.get("boost_weight")).toBeNull();
+  });
+
+  it("sends nothing without words, or to a model that has not confirmed it", async () => {
+    const none = await formFor({ model: "parakeet", boostWords: [], boostWeight: 2 });
+    expect(none.getAll("boost")).toEqual([]);
+    expect(none.get("boost_weight")).toBeNull();
+    const unconfirmed = await formFor({ model: "not-loaded", boostWords: ["Stanzo"], boostWeight: 2 });
+    expect(unconfirmed.getAll("boost")).toEqual([]);
+    expect(unconfirmed.get("boost_weight")).toBeNull();
+  });
+});
+
 describe("SttServerProvider — transcribe", () => {
   it("sends model, prompt, language, temperature and word timestamps when supported", async () => {
     const captures: Capture[] = [];

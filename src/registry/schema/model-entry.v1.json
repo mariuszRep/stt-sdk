@@ -64,7 +64,7 @@
     },
     "capabilityMatrix": {
       "type": "object",
-      "description": "Control name -> tri-state capability. Controls: prompt, temperature, language_hint, language_detect, translation, timestamp_granularity, word_timestamps, streaming, response_formats, punctuation, itn, cancellation, long_form, spec_decode, native_sample_rate, diarization, speaker_embedding, tools, thinking, vision, json_schema, system_role, context_window (extra.tokens), text_streaming.",
+      "description": "Control name -> tri-state capability. Controls: prompt, word_boost, temperature, language_hint, language_detect, translation, timestamp_granularity, word_timestamps, streaming, response_formats, punctuation, itn, cancellation, long_form, spec_decode, native_sample_rate, diarization, speaker_embedding, tools, thinking, vision, json_schema, system_role, context_window (extra.tokens), text_streaming.",
       "additionalProperties": { "$ref": "#/$defs/controlCapability" }
     },
     "localInfo": {
