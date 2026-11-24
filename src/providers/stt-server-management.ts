@@ -344,7 +344,7 @@ export class SttServerManagement {
       waitMs = MODEL_BUSY_WAIT_MS,
     }: { signal?: AbortSignal; onWaiting?: () => void; onVerifying?: (state: OperationState) => void; waitMs?: number } = {},
   ): Promise<SetDefaultResponse> {
-    const deadline = Date.now() + waitMs;
+    let deadline = Date.now() + waitMs;
     let backoffMs = 500;
     let verified = false;
     for (;;) {
@@ -354,6 +354,8 @@ export class SttServerManagement {
         if (isNeedsVerificationError(err) && !verified) {
           verified = true;
           await this.verifyModelAndWait(id, { signal, onProgress: onVerifying });
+          // The wait for a busy server starts after the verification, which can take minutes on a large model.
+          deadline = Date.now() + waitMs;
           continue;
         }
         if (!isModelBusyError(err)) throw err;

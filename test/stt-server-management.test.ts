@@ -379,6 +379,26 @@ describe("SttServerManagement.setDefaultModelWhenIdle", () => {
     expect(verifies).toBe(1);
   });
 
+  it("waits for a busy server after the verification, however long the verification took", async () => {
+    let verified = false;
+    let selects = 0;
+    const client = makeClient((async (url: string) => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/verify")) return jsonResponse({ operation_id: "v1", state: "running" });
+      if (path.includes("/operations/")) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        verified = true;
+        return jsonResponse({ operation_id: "v1", state: "completed" });
+      }
+      if (path === "/readiness") return jsonResponse({ status: "not_ready" }, 503);
+      selects += 1;
+      if (!verified) return needsVerification();
+      return selects < 3 ? jsonResponse({ error: { code: "model_loading", message: "busy" } }, 409) : jsonResponse({ model: "m", backend: {} });
+    }) as unknown as typeof fetch);
+    const result = await client.setDefaultModelWhenIdle("m", { waitMs: 20 });
+    expect(result.model).toBe("m");
+  });
+
   it("only the needs_verification refusal is a request to verify", () => {
     expect(isNeedsVerificationError(new ModelManagerError("x", "needs_verification", 409))).toBe(true);
     expect(isNeedsVerificationError(new ModelManagerError("x", "model_loading", 409))).toBe(false);

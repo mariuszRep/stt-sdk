@@ -96,6 +96,26 @@ describe("OpenAIProvider / GroqProvider — the OpenAI audio API, batch only", (
     await expect(offline.transcribe({ file: new Uint8Array([1]) })).rejects.toBeInstanceOf(ConnectionError);
   });
 
+  it("names an upload without a filename by its type, and a non-JSON answer is a typed error", async () => {
+    const { calls, fetchImpl } = recording({ text: "" });
+    await new OpenAIProvider({ apiKey: "k", fetchImpl }).transcribe({ file: new Blob([new Uint8Array([1])], { type: "audio/webm;codecs=opus" }) });
+    expect(((calls[0]!.init!.body as FormData).get("file") as File).name).toBe("recording.webm");
+    const html = new OpenAIProvider({
+      apiKey: "k",
+      fetchImpl: vi.fn(async () => new Response("<html>portal</html>", { status: 200 })) as unknown as typeof fetch,
+    });
+    await expect(html.transcribe({ file: new Uint8Array([1]) })).rejects.toMatchObject({ name: "ApiError", code: "invalid_response" });
+  });
+
+  it("gives up after the registry's time for a call when the caller gives no signal", async () => {
+    const { calls, fetchImpl } = recording({ text: "" });
+    await new OpenAIProvider({ apiKey: "k", fetchImpl }).transcribe({ file: new Uint8Array([1]) });
+    expect(calls[0]!.init!.signal).toBeInstanceOf(AbortSignal);
+    const own = new AbortController();
+    await new OpenAIProvider({ apiKey: "k", fetchImpl }).transcribe({ file: new Uint8Array([1]), signal: own.signal });
+    expect(calls[1]!.init!.signal).toBe(own.signal);
+  });
+
   it("lists the SDK's known speech models of the provider, the default marked, without a call", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
     const openai = await new OpenAIProvider({ apiKey: "k", fetchImpl }).listModels();

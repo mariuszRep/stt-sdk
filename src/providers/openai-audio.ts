@@ -23,6 +23,12 @@ export interface OpenAIAudioOptions extends TransportDeps {
   baseUrl?: string;
 }
 
+/** The file extension the API reads the audio format from, by the blob's type (`audio/webm;codecs=opus` is webm); wav when unknown. */
+function extensionOf(type: string): string {
+  const subtype = type.split(";")[0]!.split("/")[1] ?? "";
+  return ({ webm: "webm", ogg: "ogg", mpeg: "mp3", mp3: "mp3", mp4: "mp4", m4a: "m4a", "x-m4a": "m4a", flac: "flac" } as Record<string, string>)[subtype] ?? "wav";
+}
+
 /** The built-in provider `id` and its speech service, from the registry's provider data. */
 function speechServiceOf(id: string): { provider: ProviderDescriptor; service: ProviderService } {
   const provider = BUILTIN_PROVIDERS.providers.find((candidate) => candidate.id === id);
@@ -48,6 +54,8 @@ export class OpenAIAudioProvider implements SttProvider {
   private readonly baseUrl: string;
   private readonly defaultModel: string;
   private readonly retryStatuses: readonly number[];
+  /** How long a call may take when the caller gives no signal of its own (the registry's `timeouts.totalMs`). */
+  private readonly timeoutMs: number | undefined;
   private readonly fetchImpl: typeof fetch;
 
   /** `id`: the provider's id in the registry (`openai`, `groq`); `defaultModel`: the model a request without `model` goes to. */
@@ -72,6 +80,7 @@ export class OpenAIAudioProvider implements SttProvider {
     this.baseUrl = (options.baseUrl ?? service.baseUrl).replace(/\/+$/, "");
     this.defaultModel = defaultModel;
     this.retryStatuses = service.retry?.statuses ?? [];
+    this.timeoutMs = service.timeouts?.totalMs;
     this.fetchImpl = resolveFetch(options);
   }
 
@@ -89,7 +98,8 @@ export class OpenAIAudioProvider implements SttProvider {
   async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
     const name = this.capability.displayName;
     const form = new FormData();
-    form.append("file", toBlob(request.file), request.filename ?? "recording.wav");
+    const file = toBlob(request.file);
+    form.append("file", file, request.filename ?? `recording.${extensionOf(file.type)}`);
     form.append("model", request.model ?? this.defaultModel);
     if (request.language) form.append("language", request.language);
     if (request.prompt) form.append("prompt", request.prompt);
@@ -108,7 +118,7 @@ export class OpenAIAudioProvider implements SttProvider {
         method: "POST",
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form,
-        signal: request.signal,
+        signal: request.signal ?? (this.timeoutMs === undefined ? undefined : AbortSignal.timeout(this.timeoutMs)),
       });
     } catch (err) {
       throw new ConnectionError(`${name} transcription request failed`, { cause: err });
@@ -121,7 +131,13 @@ export class OpenAIAudioProvider implements SttProvider {
         retryable: this.retryStatuses.includes(res.status),
       });
     }
-    return mapTranscriptionResponse((await res.json()) as ServerTranscriptionResponse);
+    let body: ServerTranscriptionResponse;
+    try {
+      body = (await res.json()) as ServerTranscriptionResponse;
+    } catch (err) {
+      throw new ApiError(`${name} answered with something that is not a transcription`, { status: res.status, code: "invalid_response", cause: err });
+    }
+    return mapTranscriptionResponse(body);
   }
 
   async createStream(_config: StreamConfig): Promise<StreamSession> {
