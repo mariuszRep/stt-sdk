@@ -8,10 +8,11 @@ Added
 - `OpenAIProvider` and `GroqProvider` transcribe for real: batch transcription over the OpenAI audio API
   (`POST /audio/transcriptions`) on your own key, with language, prompt, temperature and, when asked, word timings.
   `listModels()` lists the SDK's known speech models of the provider. No live stream (`createStream` throws
-  `UnsupportedCapabilityError`). They were typed seams that threw on every call.
+  `UnsupportedCapabilityError`). Their endpoints, names and retryable refusals are the registry's provider data, and the
+  answer is read as stt-server's is (words in their segments). They were typed seams that threw on every call.
 - `SttServerManagement.setDefaultModelWhenIdle` verifies a model the server says needs verification
   (`needs_verification`) once, reporting progress through `onVerifying`, then selects it.
-  `SttServerManagement.verifyModelAndWait` and `isNeedsVerificationError` are new.
+  `SttServerManagement.verifyModelAndWait`, `isNeedsVerificationError` and the `PollOptions` type are new.
 - `wordBoost` capability and `boostWords` / `boostWeight` on a batch request, for stt-server's Parakeet models.
 - Registry: OpenRouter's speech-out (`tts`) service and five models with their voices, audio format and pcm rate.
 

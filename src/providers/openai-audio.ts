@@ -10,51 +10,35 @@ import type {
   TranscriptionResult,
 } from "../types";
 import { ApiError, ConnectionError, UnsupportedCapabilityError } from "../errors";
+import { fromCloudCatalog } from "../registry/adapters/cloud";
 import { languagesOfMatrix, toBooleans } from "../registry/capabilities";
-import { listCloudEntries } from "../registry/data";
+import { BUILTIN_PROVIDERS, KNOWN_CLOUD_MODELS } from "../registry/data";
+import type { ProviderDescriptor, ProviderService } from "../registry/types";
+import { mapTranscriptionResponse, type ServerTranscriptionResponse } from "./openai-transcription";
 
 export interface OpenAIAudioOptions extends TransportDeps {
   /** The provider's API key, sent as a bearer token. */
   apiKey: string;
-  /** API base URL including the version path (`https://api.openai.com/v1`); defaults to the provider's own. */
+  /** API base URL including the version path (`https://api.openai.com/v1`); defaults to the provider's own (the registry's). */
   baseUrl?: string;
 }
 
-/** What tells one OpenAI-style audio provider from another. */
-interface OpenAIAudioService {
-  /** The provider id the registry knows it by (`openai`, `groq`). */
-  id: string;
-  displayName: string;
-  defaultBaseUrl: string;
-  /** The model a request without `model` is sent to. */
-  defaultModel: string;
+/** The built-in provider `id` and its speech service, from the registry's provider data. */
+function speechServiceOf(id: string): { provider: ProviderDescriptor; service: ProviderService } {
+  const provider = BUILTIN_PROVIDERS.providers.find((candidate) => candidate.id === id);
+  const service = provider?.serves.find((candidate) => candidate.kind === "speech");
+  if (!provider || !service) throw new Error(`The registry has no speech service for provider "${id}"`);
+  return { provider, service };
 }
-
-interface VerboseWord {
-  word: string;
-  start: number;
-  end: number;
-}
-
-/** `response_format=json` gives `text` alone; `verbose_json` adds the language, the duration and the word timings. */
-interface TranscriptionBody {
-  text?: string;
-  language?: string;
-  duration?: number;
-  words?: VerboseWord[];
-}
-
-const ms = (seconds: number) => Math.round(seconds * 1000);
 
 /**
  * Batch transcription over the OpenAI audio API (`POST {base}/audio/transcriptions`, multipart), which OpenAI serves and
- * Groq copies. Streaming is not offered: OpenAI's live transcription is a different (realtime) API. The models listed are
- * the SDK's known models of the provider (the registry's data), since the providers' own model lists do not say which
- * models transcribe.
+ * Groq copies. The endpoint, the provider's name, which refusals are worth retrying and the models listed are the
+ * registry's data for the provider (`providers.json`, `cloud-models.json`); the answer is read as stt-server's is
+ * (`mapTranscriptionResponse`). Streaming is not offered: OpenAI's live transcription is a different (realtime) API.
  *
- * Word timings are asked for only when the request asks for them (`verbose_json`, word granularity); each word is then a
- * segment, as `DeepgramProvider` gives them. A model that cannot give them (OpenAI's `gpt-transcribe`) answers with
- * an error, which is thrown as an {@link ApiError}.
+ * Word timings are asked for only when the request asks for them (`verbose_json`, word and segment granularity); a model
+ * that cannot give them (OpenAI's `gpt-transcribe`) answers with an error, which is thrown as an {@link ApiError}.
  */
 export class OpenAIAudioProvider implements SttProvider {
   readonly id: string;
@@ -63,14 +47,17 @@ export class OpenAIAudioProvider implements SttProvider {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly defaultModel: string;
+  private readonly retryStatuses: readonly number[];
   private readonly fetchImpl: typeof fetch;
 
-  protected constructor(service: OpenAIAudioService, options: OpenAIAudioOptions) {
-    if (!options.apiKey) throw new Error(`${service.displayName} requires an apiKey`);
-    this.id = service.id;
+  /** `id`: the provider's id in the registry (`openai`, `groq`); `defaultModel`: the model a request without `model` goes to. */
+  protected constructor(id: string, defaultModel: string, options: OpenAIAudioOptions) {
+    const { provider, service } = speechServiceOf(id);
+    if (!options.apiKey) throw new Error(`${provider.name} requires an apiKey`);
+    this.id = id;
     this.capability = {
-      id: service.id,
-      displayName: service.displayName,
+      id,
+      displayName: provider.name,
       transport: "http",
       requiresAudioInput: true,
       privacy: "cloud",
@@ -82,24 +69,25 @@ export class OpenAIAudioProvider implements SttProvider {
       available: true,
     };
     this.apiKey = options.apiKey;
-    this.baseUrl = (options.baseUrl ?? service.defaultBaseUrl).replace(/\/+$/, "");
-    this.defaultModel = service.defaultModel;
+    this.baseUrl = (options.baseUrl ?? service.baseUrl).replace(/\/+$/, "");
+    this.defaultModel = defaultModel;
+    this.retryStatuses = service.retry?.statuses ?? [];
     this.fetchImpl = resolveFetch(options);
   }
 
   async listModels(): Promise<ModelInfo[]> {
-    return listCloudEntries()
-      .filter((entry) => entry.provider === this.id && entry.kind === "speech")
-      .map((entry) => ({
-        id: entry.id,
-        name: entry.name,
-        languages: languagesOfMatrix(entry.capabilities) ?? entry.languages,
-        isDefault: entry.id === this.defaultModel,
-        capabilities: toBooleans(entry.capabilities),
-      }));
+    const models = KNOWN_CLOUD_MODELS.models.filter((record) => record.provider === this.id && record.kind === "speech");
+    return fromCloudCatalog({ ...KNOWN_CLOUD_MODELS, models }, BUILTIN_PROVIDERS.providers).map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      languages: languagesOfMatrix(entry.capabilities) ?? entry.languages,
+      isDefault: entry.id === this.defaultModel,
+      capabilities: toBooleans(entry.capabilities),
+    }));
   }
 
   async transcribe(request: BatchTranscriptionRequest): Promise<TranscriptionResult> {
+    const name = this.capability.displayName;
     const form = new FormData();
     form.append("file", toBlob(request.file), request.filename ?? "recording.wav");
     form.append("model", request.model ?? this.defaultModel);
@@ -109,6 +97,7 @@ export class OpenAIAudioProvider implements SttProvider {
     if (request.wordTimestamps) {
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities[]", "word");
+      form.append("timestamp_granularities[]", "segment");
     } else {
       form.append("response_format", "json");
     }
@@ -122,25 +111,17 @@ export class OpenAIAudioProvider implements SttProvider {
         signal: request.signal,
       });
     } catch (err) {
-      throw new ConnectionError(`${this.capability.displayName} transcription request failed`, { cause: err });
+      throw new ConnectionError(`${name} transcription request failed`, { cause: err });
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new ApiError(`${this.capability.displayName} transcription failed: ${res.status} ${detail}`.trim(), {
+      throw new ApiError(`${name} transcription failed: ${res.status} ${detail}`.trim(), {
         status: res.status,
         code: "transcription_failed",
-        retryable: res.status === 429 || res.status >= 500,
+        retryable: this.retryStatuses.includes(res.status),
       });
     }
-
-    const body = (await res.json()) as TranscriptionBody;
-    const words = body.words ?? [];
-    return {
-      text: body.text ?? "",
-      ...(body.language ? { language: body.language } : {}),
-      ...(body.duration !== undefined ? { durationMs: ms(body.duration) } : {}),
-      ...(words.length ? { segments: words.map((word) => ({ text: word.word, startMs: ms(word.start), endMs: ms(word.end) })) } : {}),
-    };
+    return mapTranscriptionResponse((await res.json()) as ServerTranscriptionResponse);
   }
 
   async createStream(_config: StreamConfig): Promise<StreamSession> {

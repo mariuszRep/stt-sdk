@@ -27,4 +27,5 @@ export type {
   HealthResponse,
   ReadinessResponse,
   RegistryListing,
+  PollOptions,
 } from "./stt-server-management";

@@ -108,6 +108,7 @@ export type {
   HealthResponse,
   ReadinessResponse,
   RegistryListing,
+  PollOptions,
 } from "./providers";
 export { getModelDisplaySizeBytes } from "./registry/sources";
 export type { ManagedModel } from "./registry/sources";

@@ -50,11 +50,12 @@ describe("OpenAIProvider / GroqProvider — the OpenAI audio API, batch only", (
     for (const field of ["language", "prompt", "temperature"]) expect(form.has(field)).toBe(false);
   });
 
-  it("asks for word timings only when the request does, and gives each word as a segment", async () => {
+  it("asks for word timings only when the request does, and reads the answer as stt-server's: words in their segments", async () => {
     const { calls, fetchImpl } = recording({
       text: "Hello world",
       language: "english",
       duration: 1.25,
+      segments: [{ text: "Hello world", start: 0, end: 1.0 }],
       words: [
         { word: "Hello", start: 0, end: 0.5 },
         { word: "world", start: 0.5, end: 1.0 },
@@ -67,24 +68,25 @@ describe("OpenAIProvider / GroqProvider — the OpenAI audio API, batch only", (
     expect(calls[0]!.url).toBe("http://127.0.0.1:9/openai/v1/audio/transcriptions");
     const form = calls[0]!.init!.body as FormData;
     expect(form.get("response_format")).toBe("verbose_json");
-    expect(form.getAll("timestamp_granularities[]")).toEqual(["word"]);
-    expect(result).toEqual({
-      text: "Hello world",
-      language: "english",
-      durationMs: 1250,
-      segments: [
-        { text: "Hello", startMs: 0, endMs: 500 },
-        { text: "world", startMs: 500, endMs: 1000 },
-      ],
-    });
+    expect(form.getAll("timestamp_granularities[]")).toEqual(["word", "segment"]);
+    expect(result.language).toBe("english");
+    expect(result.durationMs).toBe(1250);
+    expect(result.segments).toHaveLength(1);
+    expect(result.segments![0]).toMatchObject({ text: "Hello world", startMs: 0, endMs: 1000 });
+    expect(result.segments![0]!.words!.map((w) => [w.word, w.startMs, w.endMs])).toEqual([
+      ["Hello", 0, 500],
+      ["world", 500, 1000],
+    ]);
   });
 
-  it("throws ApiError with the status on a refusal (retryable when rate-limited) and ConnectionError when unreachable", async () => {
+  it("throws ApiError with the status on a refusal (retryable as the registry's provider data says) and ConnectionError when unreachable", async () => {
     const refused = new OpenAIProvider({ apiKey: "k", fetchImpl: recording({ error: { message: "bad key" } }, 401).fetchImpl });
     await expect(refused.transcribe({ file: new Uint8Array([1]) })).rejects.toMatchObject({ name: "ApiError", status: 401, retryable: false });
     const limited = new OpenAIProvider({ apiKey: "k", fetchImpl: recording({}, 429).fetchImpl });
     await expect(limited.transcribe({ file: new Uint8Array([1]) })).rejects.toMatchObject({ status: 429, retryable: true });
     await expect(limited.transcribe({ file: new Uint8Array([1]) })).rejects.toBeInstanceOf(ApiError);
+    const broken = new OpenAIProvider({ apiKey: "k", fetchImpl: recording({}, 500).fetchImpl });
+    await expect(broken.transcribe({ file: new Uint8Array([1]) })).rejects.toMatchObject({ status: 500, retryable: false });
     const offline = new OpenAIProvider({
       apiKey: "k",
       fetchImpl: vi.fn(async () => {

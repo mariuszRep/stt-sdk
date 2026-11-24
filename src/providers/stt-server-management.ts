@@ -155,6 +155,12 @@ function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** What a caller of an operation's polling ({@link SttServerManagement.pollOperation}) can give. */
+export interface PollOptions {
+  onProgress?: (state: OperationState) => void;
+  signal?: AbortSignal;
+}
+
 export class CancelledError extends Error {
   constructor() {
     super("cancelled");
@@ -403,15 +409,7 @@ export class SttServerManagement {
    */
   async pollOperation(
     operationId: string,
-    {
-      onProgress,
-      intervalMs = 500,
-      signal,
-    }: {
-      onProgress?: (state: OperationState) => void;
-      intervalMs?: number;
-      signal?: AbortSignal;
-    } = {},
+    { onProgress, intervalMs = 500, signal }: PollOptions & { intervalMs?: number } = {},
   ): Promise<OperationState> {
     for (;;) {
       if (signal?.aborted) throw new DOMException("Operation aborted", "AbortError");
@@ -425,21 +423,13 @@ export class SttServerManagement {
   }
 
   /** Convenience: start a download and poll it to completion/failure. */
-  async downloadModelAndWait(
-    id: string,
-    opts?: { onProgress?: (state: OperationState) => void; signal?: AbortSignal },
-  ): Promise<void> {
-    const { operation_id } = await this.downloadModel(id);
-    await this.pollOperation(operation_id, opts);
+  async downloadModelAndWait(id: string, opts?: PollOptions): Promise<void> {
+    await this.pollOperation((await this.downloadModel(id)).operation_id, opts);
   }
 
   /** Convenience: start a verification and poll it to completion/failure. */
-  async verifyModelAndWait(
-    id: string,
-    opts?: { onProgress?: (state: OperationState) => void; signal?: AbortSignal },
-  ): Promise<void> {
-    const { operation_id } = await this.verifyModel(id);
-    await this.pollOperation(operation_id, opts);
+  async verifyModelAndWait(id: string, opts?: PollOptions): Promise<void> {
+    await this.pollOperation((await this.verifyModel(id)).operation_id, opts);
   }
 
   // ---- Local admin (/v1/local/*) ----
