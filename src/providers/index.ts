@@ -12,7 +12,7 @@ export { GroqProvider } from "./groq";
 export type { GroqProviderOptions } from "./groq";
 export { SttServerProvider } from "./stt-server";
 export type { SttServerProviderOptions } from "./stt-server";
-export { SttServerManagement, ModelManagerError, CancelledError, isModelBusyError, managementToken, MODEL_BUSY_WAIT_MS } from "./stt-server-management";
+export { SttServerManagement, ModelManagerError, CancelledError, isModelBusyError, isNeedsVerificationError, managementToken, MODEL_BUSY_WAIT_MS } from "./stt-server-management";
 export type {
   SttServerManagementOptions,
   TokenBearingConnection,

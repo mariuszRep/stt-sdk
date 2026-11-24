@@ -5,8 +5,10 @@ import {
   SttServerManagement,
   getModelDisplaySizeBytes,
   isModelBusyError,
+  isNeedsVerificationError,
   managementToken,
   type ManagedModel,
+  type OperationState,
 } from "../src";
 import { entryProblems } from "./registry-schema";
 import manage from "./fixtures/registry/stt-server-manage.json";
@@ -319,6 +321,68 @@ describe("SttServerManagement.setDefaultModelWhenIdle", () => {
     expect(isModelBusyError(new ModelManagerError("x", "engine_busy", 503))).toBe(true);
     expect(isModelBusyError(new ModelManagerError("x", "model_load_failed", 409))).toBe(false);
     expect(isModelBusyError(new Error("x"))).toBe(false);
+  });
+
+  const needsVerification = () =>
+    jsonResponse({ error: { code: "needs_verification", message: "This model needs verification before selecting; run verify" } }, 409);
+
+  /** A server whose select answers 409 `needs_verification` until the model's verify operation has completed. */
+  function serverNeedingVerification(verifyEnds: Partial<OperationState> = { state: "completed" }) {
+    const seen: string[] = [];
+    let verified = false;
+    const client = makeClient((async (url: string, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      seen.push(`${init?.method ?? "GET"} ${path}`);
+      if (path === "/models/manage/m/default") return verified ? jsonResponse({ model: "m", backend: {} }) : needsVerification();
+      if (path === "/models/manage/m/verify") return jsonResponse({ operation_id: "v1", state: "running" });
+      if (path === "/models/manage/operations/v1") {
+        verified = verifyEnds.state === "completed";
+        return jsonResponse({ operation_id: "v1", progress_bytes: 5, total_bytes: 10, ...verifyEnds });
+      }
+      throw new Error(`unexpected ${path}`);
+    }) as unknown as typeof fetch);
+    return { client, seen };
+  }
+
+  it("verifies a model the server wants verified, shows the progress, then selects it", async () => {
+    const { client, seen } = serverNeedingVerification();
+    const ticks: OperationState[] = [];
+    const result = await client.setDefaultModelWhenIdle("m", { onVerifying: (state) => ticks.push(state) });
+    expect(result.model).toBe("m");
+    expect(seen).toEqual([
+      "POST /models/manage/m/default",
+      "POST /models/manage/m/verify",
+      "GET /models/manage/operations/v1",
+      "POST /models/manage/m/default",
+    ]);
+    expect(ticks.map((t) => [t.progress_bytes, t.total_bytes])).toEqual([[5, 10]]);
+  });
+
+  it("throws the server's message when the verification fails, and does not select", async () => {
+    const { client, seen } = serverNeedingVerification({ state: "failed", error: "checksum mismatch" });
+    await expect(client.setDefaultModelWhenIdle("m")).rejects.toThrow(/checksum mismatch/);
+    expect(seen.filter((call) => call.endsWith("/default"))).toHaveLength(1);
+  });
+
+  it("verifies once: a model still refused after it is a failure, not a loop", async () => {
+    let verifies = 0;
+    const client = makeClient((async (url: string) => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/verify")) {
+        verifies += 1;
+        return jsonResponse({ operation_id: "v1", state: "running" });
+      }
+      if (path.includes("/operations/")) return jsonResponse({ operation_id: "v1", state: "completed" });
+      return needsVerification();
+    }) as unknown as typeof fetch);
+    await expect(client.setDefaultModelWhenIdle("m")).rejects.toSatisfy((err: unknown) => isNeedsVerificationError(err));
+    expect(verifies).toBe(1);
+  });
+
+  it("only the needs_verification refusal is a request to verify", () => {
+    expect(isNeedsVerificationError(new ModelManagerError("x", "needs_verification", 409))).toBe(true);
+    expect(isNeedsVerificationError(new ModelManagerError("x", "model_loading", 409))).toBe(false);
+    expect(isNeedsVerificationError(new Error("needs_verification"))).toBe(false);
   });
 });
 

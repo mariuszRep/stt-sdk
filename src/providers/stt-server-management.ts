@@ -129,6 +129,12 @@ export function isModelBusyError(err: unknown): boolean {
   return err instanceof ModelManagerError && (err.code === "model_loading" || err.code === "engine_busy");
 }
 
+/** The server refused to select a downloaded model that is not verified yet (409 `needs_verification`): verifying it
+ * (`verifyModelAndWait`) clears it. */
+export function isNeedsVerificationError(err: unknown): boolean {
+  return err instanceof ModelManagerError && err.code === "needs_verification";
+}
+
 const SET_DEFAULT_TIMEOUT_MS = 120_000;
 
 /** How long {@link SttServerManagement.setDefaultModelWhenIdle} waits for the server to finish loading. */
@@ -318,19 +324,32 @@ export class SttServerManagement {
   /**
    * {@link setDefaultModel}, but while the server is busy loading (its startup reload of the previous default, another
    * switch) it backs off and retries, up to `MODEL_BUSY_WAIT_MS`, calling `onWaiting` on each refusal. Done as soon as
-   * `/readiness` reports `id` itself loaded (the startup reload was this very model). Any other failure -- the server
-   * gone, the model invalid -- is thrown at once.
+   * `/readiness` reports `id` itself loaded (the startup reload was this very model). A model the server says needs
+   * verification is verified first (`onVerifying` gets each progress tick of that operation, a failed verification is
+   * thrown with the server's message), then selected; one that is refused again after that is thrown. Any other
+   * failure -- the server gone, the model invalid -- is thrown at once.
    */
   async setDefaultModelWhenIdle(
     id: string,
-    { signal, onWaiting, waitMs = MODEL_BUSY_WAIT_MS }: { signal?: AbortSignal; onWaiting?: () => void; waitMs?: number } = {},
+    {
+      signal,
+      onWaiting,
+      onVerifying,
+      waitMs = MODEL_BUSY_WAIT_MS,
+    }: { signal?: AbortSignal; onWaiting?: () => void; onVerifying?: (state: OperationState) => void; waitMs?: number } = {},
   ): Promise<SetDefaultResponse> {
     const deadline = Date.now() + waitMs;
     let backoffMs = 500;
+    let verified = false;
     for (;;) {
       try {
         return await this.setDefaultModel(id);
       } catch (err) {
+        if (isNeedsVerificationError(err) && !verified) {
+          verified = true;
+          await this.verifyModelAndWait(id, { signal, onProgress: onVerifying });
+          continue;
+        }
         if (!isModelBusyError(err)) throw err;
         if (Date.now() >= deadline) {
           throw new Error("The speech server is still busy loading a model. Try again in a moment.");
@@ -401,17 +420,7 @@ export class SttServerManagement {
       if (state.state === "completed") return state;
       if (state.state === "cancelled") throw new CancelledError();
       if (state.state === "failed") throw new Error(state.error ?? "operation failed");
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(resolve, intervalMs);
-        signal?.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(timeout);
-            reject(new DOMException("Operation aborted", "AbortError"));
-          },
-          { once: true },
-        );
-      });
+      await sleepUnlessAborted(intervalMs, signal);
     }
   }
 
@@ -421,6 +430,15 @@ export class SttServerManagement {
     opts?: { onProgress?: (state: OperationState) => void; signal?: AbortSignal },
   ): Promise<void> {
     const { operation_id } = await this.downloadModel(id);
+    await this.pollOperation(operation_id, opts);
+  }
+
+  /** Convenience: start a verification and poll it to completion/failure. */
+  async verifyModelAndWait(
+    id: string,
+    opts?: { onProgress?: (state: OperationState) => void; signal?: AbortSignal },
+  ): Promise<void> {
+    const { operation_id } = await this.verifyModel(id);
     await this.pollOperation(operation_id, opts);
   }
 

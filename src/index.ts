@@ -83,6 +83,7 @@ export {
   ModelManagerError,
   CancelledError,
   isModelBusyError,
+  isNeedsVerificationError,
   managementToken,
   MODEL_BUSY_WAIT_MS,
 } from "./providers";
