@@ -46,6 +46,9 @@ function capabilityFor(descriptor: RuntimeConnectionDescriptor): ProviderCapabil
  *
  * @param deps Optional transport seams (fetch/WebSocket overrides) forwarded to
  *   the constructed provider; useful for tests and non-default runtimes.
+ *
+ * @deprecated Provider-era API, kept so existing call sites keep working and removed in 1.0. Use `SttServerProvider`
+ * against stt-server (or a cloud provider) instead.
  */
 export function createProvider(
   descriptor: RuntimeConnectionDescriptor,

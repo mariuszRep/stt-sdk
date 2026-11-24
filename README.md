@@ -36,7 +36,7 @@ console.log(result.text); // -> { text: "..." } preserved from the runtime
 became clear it was never actually the source of committed/pasted text, only
 a preview overlay (see `providers/faster-whisper.ts`'s class doc comment).
 `createStream()` now throws `UnsupportedCapabilityError`, matching
-`WhisperCppProvider`/`OpenAIProvider`/`GroqProvider` below. For real
+`WhisperCppProvider` and the batch-only `OpenAIProvider`/`GroqProvider` below. For real
 streaming, see the Deepgram example next.
 
 ### Cloud (Deepgram) — no server required
@@ -82,6 +82,10 @@ const translated = await provider.translate({ file, model: "whisper-tiny" });
 
 // Another target language, when the model offers it (an stt-server extension to OpenAI's English-only endpoint):
 const german = await provider.translate({ file, model: "canary", targetLanguage: "de" });
+
+// A subtitle file ("srt" or "vtt", as in OpenAI's response_format) instead of a result object: the text of the file.
+// A model without segment timestamps rejects with UnsupportedCapabilityError. Works on translate() too.
+const subtitles: string = await provider.transcribe({ file, model: "whisper-tiny", responseFormat: "srt" });
 ```
 
 Where speech is in a finished recording (Silero VAD running in the server, no model needed; an stt-server extension,
@@ -92,6 +96,31 @@ const { segments, speechRatio, duration } = await provider.detectSpeech(file, { 
 // segments: [{ start: 0.26, end: 2.94 }, ...] in seconds
 ```
 
+Voice fingerprints of a finished recording (CAM++ running in the server, no model needed; an stt-server extension, WAV
+audio). Each segment gets a unit-length embedding; segments under 0.5 s get `null`. Left out, `segments` come from the
+server's own speech detection. The pure helpers compare embeddings of one `model` (store it beside saved profiles):
+
+```ts
+import { clusterSpeakers, cosineSimilarity, matchSpeaker } from "@open-vibe-ai/stt-sdk";
+
+const { model, segments } = await provider.embedSpeakers(file, { segments: [{ start: 0, end: 4.2 }] });
+const labels = clusterSpeakers(segments.map((s) => s.embedding), { threshold: 0.4, maxSpeakers: 4 }); // [0, 1, 0, ...]
+const who = matchSpeaker(segments[0].embedding!, savedProfiles, 0.4); // { profile, similarity } or null
+const alike = cosineSimilarity(a, b); // -1..1; about 0.4 and up is the same voice with this model
+```
+
+Who spoke when, decided by the server (`POST /v1/audio/diarize`, an stt-server extension; it clusters with the same
+algorithm as `clusterSpeakers`). The answer has the shape of OpenAI's `diarized_json` segments, **without text**:
+transcribe separately and join by time. Known voices are named by embedding (from `embedSpeakers`) or by a 2-10 s
+reference clip, never both in one call:
+
+```ts
+const { segments } = await provider.diarize(file, { threshold: 0.4, maxSpeakers: 4 });
+// segments: [{ type: "transcript.text.segment", id: "seg_0", start: 0, end: 2.5, speaker: "A" }, ...]
+await provider.diarize(file, { knownSpeakers: [{ name: "Ann", embedding: annProfile }] }); // "Ann", "A", "B", ...
+await provider.diarize(file, { knownSpeakers: [{ name: "Ann", audio: annClip }] }); // a WAV clip of Ann
+```
+
 A model's `capabilities.translationTargets` lists the languages it translates into; a translating model that does
 not report a list translates into English only. `translate()` and `createStream({ targetLanguage })` reject with
 `UnsupportedCapabilityError` for a target the model does not offer.
@@ -99,7 +128,7 @@ not report a list translates into English only. `translate()` and `createStream(
 `SttServerProvider` connects with an address and a token like a cloud provider —
 no discovery, install, model management, or server lifecycle. It checks `GET /health`
 on first use and refuses clearly if the server isn't `stt-server` or its
-`api_level` is too old. Before sending `prompt`/`language`/`temperature`/timestamp
+`api_level` is too old. Before sending `prompt`/`boostWords`/`language`/`temperature`/timestamp
 fields, it checks the chosen model's capabilities (from `GET /v1/models`, cached and
 refreshed on a stale-capability error) and omits anything the model doesn't support —
 an `"unknown"` capability status is treated the same as unsupported. Server errors are
@@ -109,6 +138,11 @@ mapped to a stable `code`/`retryable` hierarchy (`ServerNotReadyError`,
 `AdminRequiredError`, `UnauthorizedError`, `NetworkNotPrivateError`,
 `ServerVersionError`); an unrecognized server error code still surfaces with its
 original `code` rather than being swallowed.
+
+`boostWords` are words the speech is expected to hold, written the way they should appear (a user's
+vocabulary); `boostWeight` is how hard the decoder leans towards them (left out: the server's default).
+They go out as one `boost` field per word plus `boost_weight`, only to a model whose
+`capabilities.wordBoost` is true (stt-server's `word_boost` control: the Parakeet family's transducer models).
 
 Live transcription: a model whose `ModelInfo.capabilities.streaming` is `true` can be
 streamed with `provider.createStream({ model, language, encoding: "pcm_s16le", sampleRate: 16000, channels: 1 })`,
@@ -137,7 +171,7 @@ const provider = createProvider(descriptor);
   `transcribe()`, `createStream()`. Local and cloud adapters expose the same contract.
 - **Capabilities** — `ProviderInfo` / `ProviderCapability` normalized across adapters.
 - **Runtime descriptors** — `RuntimeConnectionDescriptor` (versioned, server-issued).
-- **Models** — `ModelInfo`.
+- **Models** — `ModelInfo`; the model list with flags is the [Registry](#registry) (`/registry` subpath).
 - **Batch** — `BatchTranscriptionRequest`, `TranscriptionResult`, `TranscriptionSegment`.
 - **Streaming** — `StreamConfig`, `StreamSession`, `SessionState`, and protocol-v1
   `TranscriptEvent` union (`ready`, `partial`, `final`, `lagging`, `error`, `closed`).
@@ -152,13 +186,75 @@ const provider = createProvider(descriptor);
 | `FasterWhisperProvider` | implemented (batch-only) | HTTP batch (`POST /v1/audio/transcriptions`) |
 | `DeepgramProvider` | implemented (cloud proof) | REST `POST /v1/listen` + WS `wss://api.deepgram.com/v1/listen` |
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
-| `OpenAIProvider` | seam (typed, not implemented) | — |
-| `GroqProvider` | seam (typed, not implemented) | — |
-| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
+| `OpenAIProvider` | implemented (batch-only, your own key) | HTTP batch (`POST https://api.openai.com/v1/audio/transcriptions`) |
+| `GroqProvider` | implemented (batch-only, your own key) | HTTP batch (`POST https://api.groq.com/openai/v1/audio/transcriptions`) |
+| `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`), speaker embeddings (`embedSpeakers()`, `POST /v1/audio/embeddings`, with `cosineSimilarity`/`matchSpeaker`/`clusterSpeakers`), diarization (`diarize()`, `POST /v1/audio/diarize`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
 provider info; `transcribe`/`createStream`/`listModels` throw
 `UnsupportedCapabilityError` so unimplemented behavior is explicit and typed.
+
+## Registry
+
+`@open-vibe-ai/stt-sdk/registry` is the model registry: ONE standard list of every model the estate uses (speech,
+AI, cloud and local), in the shape of stt-server's catalog extended to every kind. It is data and adapters only; it
+calls no provider. The desktop app calls cloud providers itself and keeps API keys in the user's account, so nothing
+here holds a key.
+
+```ts
+import { fromOllama, fromSttServerManaged, listCloudEntries, parseModelRef, toBooleans } from "@open-vibe-ai/stt-sdk/registry";
+import { SttServerManagement } from "@open-vibe-ai/stt-sdk";
+
+const management = new SttServerManagement({ baseUrl, token: adminToken });
+const { entries: speech, states } = await management.listRegistryEntries(); // stt-server's models + install state
+const ai = fromOllama(await (await fetch("http://127.0.0.1:11434/api/tags")).json());   // + shows: { [name]: /api/show body }
+const cloud = listCloudEntries();                                                         // known cloud models (Plus)
+const list = [...speech, ...ai, ...cloud];
+
+parseModelRef("llm/ollama/llama3.2");     // { kind: "llm", provider: "ollama", id: "llama3.2:latest" }
+```
+
+**An entry** (`ModelEntry`) is one model of the list. Its flags:
+
+| Field | Values |
+|---|---|
+| `locality` | `local` or `cloud` (anything that leaves this computer) |
+| `tasks` (several allowed) | `speech-to-text`, `text-to-text`, `vision`, `text-to-speech`, `text-embedding`, `speaker-embedding`, `voice-activity-detection`, `denoise`; always includes the task of its `kind` |
+| `kind` (primary, for the reference) | `speech`, `llm`, `speaker`, `vad`, `denoise`, `tts`, `embedding` |
+| `access` | `free` (local) or `plus` (every cloud model) |
+| `privacy` | what leaves the computer (`audio`, `text`, `context`, `images`) and `to` which host; empty for local |
+| `capabilities` | stt-server's tri-state matrix (`supported` / `unsupported` / `unknown`, with `evidence`) extended with `tools`, `thinking`, `vision`, `json_schema`, `system_role`, `context_window`, `text_streaming`, ... |
+
+**A reference** is `kind/provider/id`, the one string a workflow stores: `speech/stt-server/parakeet-tdt-0.6b-v2`,
+`speech/stt-server/custom-<slug>-<sha8>`, `llm/ollama/gemma3:4b`, `llm/openrouter/anthropic/claude-sonnet-5.5`. The id
+may contain `/` and `:`; only the first two `/` separate the parts. `sttServerModelRef(slug)` and `ollamaModelRef(tag)`
+map the old flat ids (an Ollama name without a tag is `:latest`).
+
+**Adapters** turn what a source says into entries: `fromSttServerManaged` (`GET /models/manage`),
+`fromSttServerV1Model` (`GET /v1/models`), `fromOllama` (`/api/tags`, each optionally with its `/api/show`) and
+`fromCloudCatalog`. A current stt-server labels its own rows (`kind`, `provider`, `ref`, `locality`, `tasks`,
+`privacy`, `recommended`, and the catalog's `description`, `parameters`, `base_model`, `language_count`) and the two
+stt-server adapters use those labels; they derive them only for an older server that sends none.
+`SttServerManagement.listRegistryEntries()` asks a current server for `GET /v1/registry`, which already answers in the
+registry's shape (and also lists the models compiled into the server, `builtin`, whose weights' size and SHA-256 are
+under `local.files`: filter on `kind` for speech models) and falls back to `/models/manage` and the adapters on a 404.
+The result carries the server's `catalogVersion` (a number; the SDK's own data files use a review date, the type is
+`CatalogVersion`) and `generatedAt` when the server reports them. `toBooleans(matrix)` is the one derivation of the simple `ModelCapabilities` booleans (`unknown` is
+not supported); `SttServerProvider` uses it too.
+
+**Data**: `BUILTIN_PROVIDERS` (`data/providers.json`: Ollama and the cloud providers with endpoint, auth, quirks,
+timeouts, where to get a key) and `KNOWN_CLOUD_MODELS` (`data/cloud-models.json`: a short list per provider, with
+context windows and capability claims of ours as of 2026-10-30, to be refreshed as providers change; a provider that takes any model id accepts others
+too). Providers: AI Ollama (local), OpenAI, Anthropic, Gemini, Groq, OpenRouter, and a template for custom
+OpenAI-compatible endpoints; speech OpenAI, Groq, Deepgram.
+
+**Schema**: `MODEL_ENTRY_SCHEMA` is the JSON Schema (draft 2020-12, `schema/model-entry.v1.json` in the source). Its
+`$defs` also cover `ModelState`, `ProviderDescriptor` and the two data files, so another language can validate all of
+it. Additive fields never change the version.
+
+`SttServerManagement` (main entry) is the client for stt-server's model manager and local admin API
+(`/models/manage/*`, `/v1/local/*`, `/health`, `/readiness`; admin token): list, download, verify, set default,
+remove, poll operations. It moved here from the Stanzo app as `ModelManagerClient`.
 
 ## Delivery decisions (2026-08-12)
 

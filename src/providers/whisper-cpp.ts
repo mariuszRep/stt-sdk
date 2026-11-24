@@ -23,6 +23,9 @@ export interface WhisperCppOptions {
  * operation throws {@link UnsupportedCapabilityError} until the adapter is
  * implemented. The SDK does not add first-time provider implementations beyond
  * the selected initial contract proof (see README).
+ *
+ * @deprecated Provider-era API, kept so existing call sites keep working and removed in 1.0. Use `SttServerProvider`
+ * against stt-server (or a cloud provider) instead.
  */
 export class WhisperCppProvider implements SttProvider {
   readonly id = "whisper-cpp";

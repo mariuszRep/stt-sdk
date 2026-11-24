@@ -1,0 +1,44 @@
+{
+  "models": [
+    {
+      "name": "llama3.2:latest",
+      "model": "llama3.2:latest",
+      "modified_at": "2026-09-30T10:12:51.5344688+02:00",
+      "size": 2019393189,
+      "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "details": { "parent_model": "", "format": "gguf", "family": "llama", "families": ["llama"], "parameter_size": "3.2B", "quantization_level": "Q4_K_M" }
+    },
+    {
+      "name": "gemma3:4b",
+      "model": "gemma3:4b",
+      "modified_at": "2026-09-30T10:20:13.0021411+02:00",
+      "size": 3338801718,
+      "digest": "a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a",
+      "details": { "parent_model": "", "format": "gguf", "family": "gemma3", "families": ["gemma3"], "parameter_size": "4.3B", "quantization_level": "Q4_K_M" }
+    },
+    {
+      "name": "qwen3:8b",
+      "model": "qwen3:8b",
+      "modified_at": "2026-10-02T09:01:44.8120007+02:00",
+      "size": 5225388164,
+      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "details": { "parent_model": "", "format": "gguf", "family": "qwen3", "families": ["qwen3"], "parameter_size": "8.2B", "quantization_level": "Q4_K_M" }
+    },
+    {
+      "name": "nomic-embed-text:latest",
+      "model": "nomic-embed-text:latest",
+      "modified_at": "2026-09-12T18:44:02.1100000+02:00",
+      "size": 274302450,
+      "digest": "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+      "details": { "parent_model": "", "format": "gguf", "family": "nomic-bert", "families": ["nomic-bert"], "parameter_size": "137M", "quantization_level": "F16" }
+    },
+    {
+      "name": "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M",
+      "model": "hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:Q4_K_M",
+      "modified_at": "2026-10-05T12:00:00.0000000+02:00",
+      "size": 807694464,
+      "digest": "b0d13d3a6e1ce2b2b9b1d2b0f6b9a3c7d0f2f13d8d2b0c0a7e0e4b26b8d7c1aa",
+      "details": { "parent_model": "", "format": "gguf", "family": "llama", "families": ["llama"], "parameter_size": "1.2B", "quantization_level": "unknown" }
+    }
+  ]
+}

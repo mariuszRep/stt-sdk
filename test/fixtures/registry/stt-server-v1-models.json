@@ -1,0 +1,192 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "whisper-tiny.en",
+      "object": "model",
+      "owned_by": "local",
+      "name": "Whisper Tiny (English)",
+      "default": true,
+      "capabilities": {
+        "prompt": {
+          "status": "supported",
+          "evidence": "loaded_model",
+          "mechanism": "whisper_initial_prompt",
+          "max_tokens": 224
+        },
+        "temperature": {
+          "status": "supported",
+          "evidence": "loaded_model",
+          "mechanism": "whisper_initial_prompt"
+        },
+        "language_hint": {
+          "status": "supported",
+          "evidence": "loaded_model",
+          "mechanism": "run_option",
+          "languages": [
+            "en"
+          ]
+        },
+        "language_detect": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "loaded_model"
+        },
+        "translation": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "loaded_model",
+          "mechanism": "task_translate",
+          "target_languages": []
+        },
+        "timestamp_granularity": {
+          "status": "supported",
+          "evidence": "loaded_model",
+          "max": "segment"
+        },
+        "streaming": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "loaded_model",
+          "model_claim": false
+        },
+        "punctuation": {
+          "status": "supported",
+          "evidence": "loaded_model"
+        },
+        "itn": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "loaded_model"
+        },
+        "cancellation": {
+          "status": "supported",
+          "evidence": "loaded_model"
+        },
+        "long_form": {
+          "status": "supported",
+          "evidence": "loaded_model"
+        },
+        "spec_decode": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "loaded_model"
+        },
+        "native_sample_rate": {
+          "status": "supported",
+          "evidence": "loaded_model",
+          "hz": 16000
+        },
+        "response_formats": {
+          "json": "supported",
+          "text": "supported",
+          "verbose_json": "supported",
+          "srt": "supported",
+          "vtt": "supported"
+        },
+        "feature_initial_prompt_flag": true,
+        "whisper_ext_accepted": null,
+        "arch": "whisper"
+      },
+      "languages": [
+        "en"
+      ],
+      "language_detect": false
+    },
+    {
+      "id": "parakeet-unified-en-0.6b",
+      "object": "model",
+      "owned_by": "local",
+      "name": "Parakeet Unified EN 0.6B",
+      "default": false,
+      "capabilities": {
+        "prompt": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": null
+        },
+        "temperature": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": null
+        },
+        "language_hint": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": [
+            "en"
+          ]
+        },
+        "language_detect": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false
+        },
+        "translation": {
+          "status": "unsupported",
+          "reason": "model_lacks",
+          "evidence": "catalog_claim",
+          "model_claim": false,
+          "target_languages": []
+        },
+        "timestamp_granularity": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": "token"
+        },
+        "streaming": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim",
+          "model_claim": true
+        },
+        "response_formats": {
+          "json": "supported",
+          "text": "supported",
+          "verbose_json": "unknown",
+          "srt": "unknown",
+          "vtt": "unknown"
+        },
+        "punctuation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "itn": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "cancellation": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "long_form": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "spec_decode": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        },
+        "native_sample_rate": {
+          "status": "unknown",
+          "reason": "unverified",
+          "evidence": "catalog_claim"
+        }
+      },
+      "languages": [
+        "en"
+      ],
+      "language_detect": false
+    }
+  ]
+}
