@@ -48,8 +48,6 @@ export interface ManagedModel extends SttServerLabels, SttServerCatalogText {
   model_capabilities?: { streaming?: boolean; translate?: boolean; lang_detect?: boolean };
   /** ISO codes of the languages the model understands. */
   languages?: string[];
-  /** True for a model that runs online, so the audio leaves this computer. */
-  cloud?: boolean;
   /** Who may use it; absent = free. No server labels a model yet: a "plus" here shows the Plus badge and locks it on Free. */
   access?: ModelAccess;
   size_bytes?: number | null;
