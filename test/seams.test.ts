@@ -4,8 +4,6 @@ import {
   LocalRuntimeProvider,
   FasterWhisperProvider,
   WhisperCppProvider,
-  OpenAIProvider,
-  GroqProvider,
   UnsupportedCapabilityError,
 } from "../src";
 import { resolveFetch } from "../src/transport";
@@ -51,8 +49,6 @@ describe("resolveFetch — default must be safely callable as a method", () => {
 describe("Adapter seams — named entry points with explicit typed unsupported behavior", () => {
   const seams = [
     { name: "WhisperCppProvider", make: () => new WhisperCppProvider({ baseUrl: "http://127.0.0.1:8001" }) },
-    { name: "OpenAIProvider", make: () => new OpenAIProvider({ apiKey: "k" }) },
-    { name: "GroqProvider", make: () => new GroqProvider({ apiKey: "k" }) },
   ] as const;
 
   for (const { name, make } of seams) {

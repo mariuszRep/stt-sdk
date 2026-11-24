@@ -36,7 +36,7 @@ console.log(result.text); // -> { text: "..." } preserved from the runtime
 became clear it was never actually the source of committed/pasted text, only
 a preview overlay (see `providers/faster-whisper.ts`'s class doc comment).
 `createStream()` now throws `UnsupportedCapabilityError`, matching
-`WhisperCppProvider`/`OpenAIProvider`/`GroqProvider` below. For real
+`WhisperCppProvider` and the batch-only `OpenAIProvider`/`GroqProvider` below. For real
 streaming, see the Deepgram example next.
 
 ### Cloud (Deepgram) — no server required
@@ -186,8 +186,8 @@ const provider = createProvider(descriptor);
 | `FasterWhisperProvider` | implemented (batch-only) | HTTP batch (`POST /v1/audio/transcriptions`) |
 | `DeepgramProvider` | implemented (cloud proof) | REST `POST /v1/listen` + WS `wss://api.deepgram.com/v1/listen` |
 | `WhisperCppProvider` | seam (typed, not implemented) | — |
-| `OpenAIProvider` | seam (typed, not implemented) | — |
-| `GroqProvider` | seam (typed, not implemented) | — |
+| `OpenAIProvider` | implemented (batch-only, your own key) | HTTP batch (`POST https://api.openai.com/v1/audio/transcriptions`) |
+| `GroqProvider` | implemented (batch-only, your own key) | HTTP batch (`POST https://api.groq.com/openai/v1/audio/transcriptions`) |
 | `SttServerProvider` | implemented | HTTP batch (`POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `GET /v1/models`, `GET /health`), offline speech detection (`detectSpeech()`, `POST /v1/audio/vad`), speaker embeddings (`embedSpeakers()`, `POST /v1/audio/embeddings`, with `cosineSimilarity`/`matchSpeaker`/`clusterSpeakers`), diarization (`diarize()`, `POST /v1/audio/diarize`) and live `WS /v1/realtime?intent=transcription` (`createStream()`) |
 
 Seam adapters are named public entry points. Constructing them succeeds and reports
